@@ -36,6 +36,22 @@ DEFAULT_TOP_HOLDINGS = 20
 DEFAULT_SECTOR_CAP_PCT = 30.0
 DEFAULT_MAX_POSITION_PCT = 8.0
 DEFAULT_CASH_BUFFER_PCT = 5.0
+HOLDINGS_PERFORMANCE_COLUMNS = [
+    "ticker",
+    "sector",
+    "portfolio_weight_pct",
+    "last_close",
+    "avg_cost",
+    "market_value",
+    "unrealized_pnl",
+    "return_pct",
+    "selected_return_pct",
+    "return_wtd_pct",
+    "return_mtd_pct",
+    "return_20d_pct",
+    "return_60d_pct",
+    "return_ytd_pct",
+]
 
 # 고정된 섹터별 색상 팔레트 (Portfolio와 S&P500 차트 간 일관성 유지)
 SECTOR_COLOR_PALETTE = {
@@ -1017,10 +1033,20 @@ def _build_positions_frame(
         return positions.copy(), None
     if close_history.empty:
         enriched = positions.copy()
+        enriched["last_close"] = np.where(enriched["ticker"].astype(str).eq("CASH"), 1.0, np.nan)
+        enriched["market_value"] = enriched["net_quantity"] * enriched["last_close"]
+        enriched["unrealized_pnl"] = enriched["market_value"] - enriched["cost_basis"]
+        enriched["total_pnl"] = enriched["unrealized_pnl"] + enriched["realized_pnl"]
+        enriched["return_pct"] = np.where(
+            enriched["cost_basis"] > 0,
+            enriched["unrealized_pnl"] / enriched["cost_basis"] * 100.0,
+            np.nan,
+        )
+        enriched["portfolio_weight"] = _normalize_weights(enriched["market_value"]) * 100.0
         for col in ["last_close", "market_value", "unrealized_pnl", "total_pnl", "return_pct", "portfolio_weight"]:
             if col not in enriched.columns:
                 enriched[col] = np.nan
-        return enriched, None
+        return enriched.sort_values("market_value", ascending=False).reset_index(drop=True), None
     latest_date = pd.Timestamp(close_history.index.max()).strftime("%Y-%m-%d")
     latest_close = close_history.ffill().iloc[-1]
     enriched = positions.copy()
@@ -1044,9 +1070,9 @@ def _build_holdings_performance(
     positions: pd.DataFrame,
     close_history: pd.DataFrame,
 ) -> pd.DataFrame:
-    if positions.empty or close_history.empty:
-        return pd.DataFrame()
-    ref_ts = pd.Timestamp(close_history.index.max()).normalize()
+    if positions.empty:
+        return pd.DataFrame(columns=HOLDINGS_PERFORMANCE_COLUMNS)
+    ref_ts = pd.Timestamp.today().normalize() if close_history.empty else pd.Timestamp(close_history.index.max()).normalize()
     wtd_start = ref_ts - pd.Timedelta(days=ref_ts.dayofweek)
     mtd_start = ref_ts.replace(day=1)
     ytd_start = ref_ts.replace(month=1, day=1)
@@ -1081,7 +1107,7 @@ def _build_holdings_performance(
                 "return_ytd_pct": 0.0,
             })
             continue
-        series = close_history[ticker] if ticker in close_history.columns else pd.Series(dtype=float)
+        series = close_history[ticker] if not close_history.empty and ticker in close_history.columns else pd.Series(dtype=float)
         if series.empty:
             continue
         rows.append(
@@ -1102,7 +1128,9 @@ def _build_holdings_performance(
                 "return_ytd_pct": _series_period_return_pct(series, ytd_start),
             }
         )
-    return pd.DataFrame(rows).sort_values("market_value", ascending=False).reset_index(drop=True)
+    if not rows:
+        return pd.DataFrame(columns=HOLDINGS_PERFORMANCE_COLUMNS)
+    return pd.DataFrame(rows, columns=HOLDINGS_PERFORMANCE_COLUMNS).sort_values("market_value", ascending=False).reset_index(drop=True)
 
 
 def _portfolio_return_series(
@@ -1933,7 +1961,7 @@ def build_portfolio_dashboard(
             as_of_date=None,
             trades=trades,
             positions=positions_raw,
-            holdings_performance=pd.DataFrame(),
+            holdings_performance=pd.DataFrame(columns=HOLDINGS_PERFORMANCE_COLUMNS),
             portfolio_summary=_build_portfolio_summary(positions_raw, pd.DataFrame(), pd.Series(dtype=float), pd.Series(dtype=float), as_of_date=None),
             attribution=pd.DataFrame(),
             stock_attribution=pd.DataFrame(),

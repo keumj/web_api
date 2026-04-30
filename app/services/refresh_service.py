@@ -378,6 +378,7 @@ def render_original_refresh_page(
     lookback_days: int,
     start_date: str | None,
     end_date: str | None,
+    admin: bool = False,
 ) -> str:
     from app.services.portfolio_service import resolve_range
 
@@ -521,7 +522,7 @@ def render_original_refresh_page(
       pollRefreshStatus();
     </script>
     """
-    return shell("데이터 갱신", body, active="refresh")
+    return shell("데이터 갱신", body, active="refresh", admin=admin)
 
 
 def refresh_page() -> str:
@@ -543,7 +544,7 @@ def refresh_page() -> str:
         )
     return (
         "<div class='service-stack'><div class='service-card'><h1>데이터 갱신</h1></div>"
-        "<div class='service-card'><table class='service-table'>"
+        "<div class='service-card'><div class='service-table-wrap'><table class='service-table'>"
         "<thead><tr><th>작업</th><th>상태</th><th>시작</th><th>종료</th><th>실행</th></tr></thead>"
-        f"<tbody>{''.join(rows)}</tbody></table></div></div>"
+        f"<tbody>{''.join(rows)}</tbody></table></div></div></div>"
     )

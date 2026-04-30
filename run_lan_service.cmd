@@ -16,5 +16,5 @@ powershell -NoProfile -Command "Get-NetIPAddress -AddressFamily IPv4 | Where-Obj
 echo Mode:    %KEUMJM_ACCESS_MODE%
 echo.
 
-"%PYTHON_EXE%" -m uvicorn app.main:app --host %KEUMJM_HOST% --port %KEUMJM_PORT%
+"%PYTHON_EXE%" scripts\run_uvicorn.py
 exit /b %ERRORLEVEL%

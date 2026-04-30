@@ -4,10 +4,17 @@ if (-not $env:PYTHONUTF8) { $env:PYTHONUTF8 = "1" }
 if (-not $env:KEUMJM_ACCESS_MODE) { $env:KEUMJM_ACCESS_MODE = "lan" }
 if (-not $env:KEUMJM_HOST) { $env:KEUMJM_HOST = "0.0.0.0" }
 if (-not $env:KEUMJM_PORT) { $env:KEUMJM_PORT = "8515" }
+if (-not $env:KEUMJM_AUTH_COOKIE_SECURE) { $env:KEUMJM_AUTH_COOKIE_SECURE = "1" }
+if (-not $env:KEUMJM_SSL_CERTFILE) { $env:KEUMJM_SSL_CERTFILE = "certs/keumjm-lan.crt" }
+if (-not $env:KEUMJM_SSL_KEYFILE) { $env:KEUMJM_SSL_KEYFILE = "certs/keumjm-lan.key" }
 
 $python = "python"
 if (Test-Path ".venv\Scripts\python.exe") {
   $python = ".venv\Scripts\python.exe"
+}
+
+if (-not (Test-Path $env:KEUMJM_SSL_CERTFILE) -or -not (Test-Path $env:KEUMJM_SSL_KEYFILE)) {
+  & $python scripts/create_https_cert.py --certfile $env:KEUMJM_SSL_CERTFILE --keyfile $env:KEUMJM_SSL_KEYFILE
 }
 
 $addresses = Get-NetIPAddress -AddressFamily IPv4 |
@@ -15,10 +22,10 @@ $addresses = Get-NetIPAddress -AddressFamily IPv4 |
   Select-Object -ExpandProperty IPAddress
 
 Write-Host ""
-Write-Host "Keumjm Portfolio Lab LAN mode"
-Write-Host "Local:   http://localhost:$env:KEUMJM_PORT"
+Write-Host "Keumjm Portfolio Lab HTTPS LAN mode"
+Write-Host "Local:   https://localhost:$env:KEUMJM_PORT"
 foreach ($address in $addresses) {
-  Write-Host "LAN:     http://${address}:$env:KEUMJM_PORT"
+  Write-Host "LAN:     https://${address}:$env:KEUMJM_PORT"
 }
 Write-Host "Mode:    $env:KEUMJM_ACCESS_MODE"
 Write-Host ""

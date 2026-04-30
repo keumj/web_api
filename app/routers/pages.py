@@ -3,14 +3,32 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from app.routers.auth import _safe_next, auth_panel
+from app.services import auth_service
 from app.web import shell
 
 router = APIRouter()
 
 
 @router.get("/", response_class=HTMLResponse)
-def index() -> HTMLResponse:
-    body = """
+def index(request: Request, next: str | None = None, auth_error: str | None = None) -> HTMLResponse:
+    next_url = _safe_next(next)
+    if auth_error == "login":
+        error = "사용자명 또는 비밀번호가 올바르지 않습니다."
+    else:
+        error = str(auth_error or "")
+    user = auth_service.current_user(request)
+    admin_card = (
+        """
+        <a class="service-card" href="/admin/users">
+          <h3>사용자 관리</h3>
+          <p>계정 생성, 관리자 권한, 사용자 비활성화, 비밀번호 초기화를 관리합니다.</p>
+        </a>
+        """
+        if user is not None and user.is_admin
+        else ""
+    )
+    body = f"""
     <div class="service-stack">
       <div class="service-card">
         <h1>Keumj 포트폴리오 분석 서비스</h1>
@@ -29,10 +47,12 @@ def index() -> HTMLResponse:
           <h3>뉴스 분석</h3>
           <p>뉴스 기반 이벤트, 섹터 전이, 토픽, 가격 반응 분석을 실행합니다.</p>
         </a>
+        {admin_card}
       </div>
+      {auth_panel(next_url=next_url, user=user, error=error)}
     </div>
     """
-    return HTMLResponse(shell("Keumj Portfolio Lab", body))
+    return HTMLResponse(shell("Keumj Portfolio Lab", body, admin=bool(user and user.is_admin)))
 
 
 @router.get("/healthz")

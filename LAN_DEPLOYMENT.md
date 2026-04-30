@@ -11,6 +11,24 @@ setup_service.cmd
 
 ## 2. Start the LAN service
 
+HTTPS + login mode:
+
+```cmd
+run_lan_https_service.cmd
+```
+
+Or:
+
+```powershell
+.\run_lan_https_service.ps1
+```
+
+The first run creates a local self-signed certificate under `certs/`. Browsers
+will show a certificate warning unless you trust that certificate on each
+client device.
+
+HTTP mode is still available for local testing:
+
 ```cmd
 run_lan_service.cmd
 ```
@@ -24,8 +42,8 @@ Or:
 The script prints URLs like:
 
 ```text
-Local:   http://localhost:8515
-LAN:     http://192.168.0.15:8515
+Local:   https://localhost:8515
+LAN:     https://192.168.0.15:8515
 ```
 
 Other devices on the same router should use the `LAN` URL.
@@ -55,7 +73,18 @@ KEUMJM_HOST=0.0.0.0
 KEUMJM_PORT=8515
 KEUMJM_ACCESS_MODE=lan
 KEUMJM_ENABLE_DOCS=true
+KEUMJM_AUTH_ENABLED=true
+KEUMJM_AUTH_COOKIE_SECURE=true
 ```
+
+Admin account:
+
+- The first account created from the login panel becomes an administrator.
+- Administrators can open `/admin/users` from the login panel after signing in.
+- Use that page to create users, grant or remove administrator access, deactivate
+  users, and reset passwords.
+- After creating the needed users, set `KEUMJM_AUTH_ALLOW_REGISTRATION=false` in
+  `.env` if you do not want visitors to self-register.
 
 In `lan` mode, the app rejects public client IPs at the application layer. It
 allows localhost, private network IPs, link-local IPs, and any extra CIDR ranges

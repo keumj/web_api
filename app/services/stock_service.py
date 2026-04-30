@@ -219,7 +219,11 @@ FACTOR_GUIDE_ROWS = [
 
 FACTOR_REGIME_LABELS = {
     "uptrend": "상승 추세 (uptrend)",
+    "bull trend": "강한 상승 추세 (bull trend)",
+    "early upturn": "상승 전환 시도 (early upturn)",
     "downtrend": "하락 추세 (downtrend)",
+    "bear trend": "강한 하락 추세 (bear trend)",
+    "downtrend pressure": "하락 압력 지속 (downtrend pressure)",
     "mixed trend": "혼합 추세 (mixed trend)",
     "high volatility": "고변동성 (high volatility)",
     "calm volatility": "저변동성 (calm volatility)",
@@ -228,6 +232,7 @@ FACTOR_REGIME_LABELS = {
     "defensive beta": "방어적 베타 (defensive beta)",
     "market-like beta": "시장유사 베타 (market-like beta)",
     "high-beta rally": "공격적 상승 국면 (high-beta rally)",
+    "high-beta trend": "고베타 추세 국면 (high-beta trend)",
     "stable uptrend": "안정 상승 국면 (stable uptrend)",
     "risk-off stress": "스트레스 국면 (risk-off stress)",
     "defensive calm": "방어 안정 국면 (defensive calm)",
@@ -312,6 +317,10 @@ def _normalized_factor_regime(value: object) -> str:
     for key, label in FACTOR_REGIME_LABELS.items():
         if key in lower:
             return label
+    if "low volatility" in lower:
+        return FACTOR_REGIME_LABELS["calm volatility"]
+    if "beta trend" in lower:
+        return "고베타 추세 국면 (high-beta trend)"
     return "판단 보류" if _has_mojibake(text) else text
 
 
@@ -340,17 +349,21 @@ def _replace_table_with_rows(soup: BeautifulSoup, table, headers: list[str], row
 
 
 def _clean_factor_tables(soup: BeautifulSoup) -> None:
+    factor_summary_titles = {"Factor Summary", "팩터 요약"}
+    guide_titles = {"Interpretation Guide", "해석 가이드"}
+
     for metric in soup.select(".metric"):
         span = metric.find("span")
         strong = metric.find("strong")
         label = span.get_text(" ", strip=True) if span else ""
-        if strong is not None and label in REGIME_FALLBACKS:
-            strong.string = _normalized_factor_regime(strong.get_text(" ", strip=True))
+        if strong is not None and (label in REGIME_FALLBACKS or "Regime" in label or "레짐" in label):
+            value = strong.get_text(" ", strip=True)
+            strong.string = _normalized_factor_regime(value)
 
     for table in soup.find_all("table"):
         heading = table.find_previous("h3")
         title = heading.get_text(" ", strip=True) if heading else ""
-        if title == "Factor Summary":
+        if title in factor_summary_titles:
             for row in table.find_all("tr"):
                 cells = row.find_all(["th", "td"])
                 if len(cells) < 2:
@@ -358,7 +371,12 @@ def _clean_factor_tables(soup: BeautifulSoup) -> None:
                 metric = cells[0].get_text(" ", strip=True)
                 if metric in REGIME_FALLBACKS or "Regime" in metric:
                     cells[1].string = _normalized_factor_regime(cells[1].get_text(" ", strip=True))
-        elif title == "Interpretation Guide":
+                for cell in cells[1:]:
+                    text = cell.get_text(" ", strip=True)
+                    normalized = _normalized_factor_regime(text)
+                    if normalized != text:
+                        cell.string = normalized
+        elif title in guide_titles:
             _replace_table_with_rows(soup, table, ["개념", "이 페이지에서 보는 의미"], FACTOR_GUIDE_ROWS)
 
 
@@ -498,18 +516,26 @@ def _replace_bad_commentary(page: str, soup: BeautifulSoup) -> None:
 
     if page == "decision":
         _clean_decision_labels(soup)
+        reason_copy_by_title = {
+            "Bullish Reasons": DECISION_REASON_COPY["Bullish Reasons"],
+            "긍정 요인": DECISION_REASON_COPY["Bullish Reasons"],
+            "Bearish Reasons": DECISION_REASON_COPY["Bearish Reasons"],
+            "부정 요인": DECISION_REASON_COPY["Bearish Reasons"],
+            "Watch Items": DECISION_REASON_COPY["Watch Items"],
+            "관찰 항목": DECISION_REASON_COPY["Watch Items"],
+        }
         for card in soup.select(".card"):
             heading = card.find("h3")
             title = heading.get_text(" ", strip=True) if heading else ""
-            if title == "Final Decision":
+            if title in {"Final Decision", "최종 판단"}:
                 paragraph = card.find("p")
                 if paragraph is not None:
                     _replace_tag_text(paragraph, _decision_commentary_text())
-            if title in DECISION_REASON_COPY:
+            if title in reason_copy_by_title:
                 ul = card.find("ul")
                 if ul is not None:
                     ul.clear()
-                    for text in DECISION_REASON_COPY[title]:
+                    for text in reason_copy_by_title[title]:
                         li = soup.new_tag("li")
                         li.string = text
                         ul.append(li)

@@ -27,6 +27,13 @@ def _env_list(name: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in raw.split(",") if item.strip())
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    return int(raw.strip())
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "Keumjm Portfolio Lab"
@@ -36,6 +43,15 @@ class Settings:
     access_mode: str = os.getenv("KEUMJM_ACCESS_MODE", "lan").strip().lower()
     allowed_cidrs: tuple[str, ...] = _env_list("KEUMJM_ALLOWED_CIDRS")
     enable_docs: bool = _env_bool("KEUMJM_ENABLE_DOCS", True)
+    gzip_minimum_size: int = _env_int("KEUMJM_GZIP_MINIMUM_SIZE", 1024)
+    gzip_compresslevel: int = _env_int("KEUMJM_GZIP_COMPRESSLEVEL", 5)
+    auth_enabled: bool = _env_bool("KEUMJM_AUTH_ENABLED", True)
+    auth_allow_registration: bool = _env_bool("KEUMJM_AUTH_ALLOW_REGISTRATION", True)
+    auth_cookie_name: str = os.getenv("KEUMJM_AUTH_COOKIE_NAME", "keumjm_session")
+    auth_cookie_secure: bool = _env_bool("KEUMJM_AUTH_COOKIE_SECURE", False)
+    auth_session_days: int = _env_int("KEUMJM_AUTH_SESSION_DAYS", 14)
+    auth_db_path: Path = Path(os.getenv("KEUMJM_AUTH_DB_PATH", "data/users/auth.sqlite"))
+    auth_secret_path: Path = Path(os.getenv("KEUMJM_AUTH_SECRET_PATH", "data/users/session_secret.key"))
 
     def parsed_allowed_networks(self):
         return tuple(ip_network(cidr, strict=False) for cidr in self.allowed_cidrs)

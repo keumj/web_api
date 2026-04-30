@@ -151,14 +151,14 @@ def _base_css(is_sub_page: bool = False) -> str:
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", "Noto Sans KR", sans-serif; }
-    .wrap { max-width: 1460px; margin: 0 auto; padding: 20px; }
+    .wrap { width: 100%; max-width: 1460px; margin: 0 auto; padding: 20px; }
     h1 { margin: 0 0 10px; font-size: 24px; }
     h2, h3, h4, p { margin-top: 0; }
     .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
     .page-head h1 { margin: 0; }
     .page-credit { color: var(--muted); font-size: 11px; white-space: nowrap; padding-top: 4px; }
     .sub { color: var(--muted); margin-bottom: 14px; }
-    .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+    .card { min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
     .nav { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
     .nav a { text-decoration: none; color: var(--brand); border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 7px 12px; font-size: 13px; }
     .nav a.active { background: var(--brand); color: #fff; border-color: var(--brand); }
@@ -175,15 +175,15 @@ def _base_css(is_sub_page: bool = False) -> str:
     .notice.ok { background: var(--ok-bg); border: 1px solid var(--ok-line); }
     .notice.err { background: var(--err-bg); border: 1px solid var(--err-line); }
     .metrics { margin-top: 12px; display: grid; grid-template-columns: repeat(4, minmax(170px, 1fr)); gap: 10px; }
-    .metric { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+    .metric { min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
     .metric span { display: block; font-size: 12px; color: var(--muted); }
     .metric strong { display: block; margin-top: 5px; font-size: 17px; line-height: 1.3; }
-    .charts { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(290px, 1fr)); gap: 10px; }
+    .charts { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .tables { margin-top: 12px; display: grid; grid-template-columns: 1fr; gap: 10px; }
-    .table-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(320px, 1fr)); gap: 10px; }
-    .table-wrap { width: 100%; max-width: 100%; overflow-x: auto; max-height: 500px; overflow-y: auto; border-bottom: 1px solid var(--line); }
-    .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .data-table th, .data-table td { border: 1px solid var(--line); padding: 6px; text-align: left; vertical-align: top; }
+    .table-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .table-wrap { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; max-height: 500px; overflow-y: auto; border-bottom: 1px solid var(--line); -webkit-overflow-scrolling: touch; }
+    .data-table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 12px; }
+    .data-table th, .data-table td { border: 1px solid var(--line); padding: 6px; text-align: left; vertical-align: top; white-space: nowrap; }
     .stacked-table-group { display: grid; gap: 12px; }
     .stacked-table-block h4 { margin: 4px 0 8px; font-size: 13px; color: var(--muted); }
     .muted { color: var(--muted); }

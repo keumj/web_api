@@ -409,7 +409,8 @@ def _base_css() -> str:
       color: #1f2937;
     }
     .wrap {
-      max-width: 1280px;
+      width: 100%;
+      max-width: 1460px;
       margin: 0 auto;
       padding: 24px;
     }
@@ -420,6 +421,9 @@ def _base_css() -> str:
       color: #52606d;
     }
     .card {
+      max-width: 100%;
+      min-width: 0;
+      overflow-x: auto;
       background: rgba(255, 255, 255, 0.92);
       border: 1px solid rgba(148, 163, 184, 0.35);
       border-radius: 16px;
@@ -477,7 +481,8 @@ def _base_css() -> str:
       background: #fff;
     }
     table {
-      width: 100%;
+      width: max-content;
+      min-width: 100%;
       border-collapse: collapse;
       font-size: 0.95rem;
     }
@@ -486,6 +491,7 @@ def _base_css() -> str:
       padding: 8px 10px;
       text-align: left;
       vertical-align: top;
+      white-space: nowrap;
     }
     th {
       background: #f8fafc;

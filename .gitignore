@@ -11,6 +11,8 @@ dist*/
 outputs/**
 !outputs/.gitkeep
 !outputs/**/.gitkeep
+certs/
+data/users/
 
 data/.yfinance_tz_cache/
 data/.yfinance_cache/

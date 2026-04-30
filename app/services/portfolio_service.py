@@ -24,6 +24,7 @@ from pipeline_portfolio.analysis import (
 
 from app.web import add_start_page_link
 from app.services.dataframe import frame_records
+from app.services.auth_service import AuthUser, portfolio_db_for_user
 
 
 DEFAULT_START_DATE = "2025-12-31"
@@ -37,8 +38,32 @@ class PortfolioRange:
     end_date: str
 
 
-def _prepare_portfolio_html(page: str, html: str) -> str:
+def _prepare_portfolio_html(page: str, html: str, *, user: AuthUser | None = None) -> str:
     html = add_start_page_link(html)
+    if user is not None:
+        soup = BeautifulSoup(html, "html.parser")
+        wrap = soup.select_one(".wrap")
+        if wrap is not None and wrap.find(attrs={"data-user-bar": "1"}) is None:
+            bar = soup.new_tag("div")
+            bar["class"] = "notice ok"
+            bar["style"] = "display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"
+            bar["data-user-bar"] = "1"
+            label = soup.new_tag("span")
+            role = "관리자" if user.is_admin else "일반"
+            label.string = f"로그인 사용자: {user.username} ({role})"
+            actions = soup.new_tag("span")
+            actions["style"] = "display:flex; gap:10px; align-items:center; flex-wrap:wrap;"
+            if user.is_admin:
+                admin_link = soup.new_tag("a", href="/admin/users")
+                admin_link.string = "사용자 관리"
+                actions.append(admin_link)
+            link = soup.new_tag("a", href="/logout")
+            link.string = "로그아웃"
+            actions.append(link)
+            bar.append(label)
+            bar.append(actions)
+            wrap.insert(1, bar)
+        html = str(soup)
     if page not in HISTORICAL_PAGES:
         return html
 
@@ -72,6 +97,10 @@ def _prepare_portfolio_html(page: str, html: str) -> str:
     return str(soup)
 
 
+def _portfolio_db(user: AuthUser | None) -> str | None:
+    return str(portfolio_db_for_user(user)) if user is not None else None
+
+
 def _latest_db_date() -> str:
     return _get_db_max_date().strftime("%Y-%m-%d")
 
@@ -96,12 +125,14 @@ def resolve_range(
 
 def dashboard_payload(
     *,
+    user: AuthUser | None = None,
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> dict[str, object]:
     date_range = resolve_range(start_date, end_date, lookback_days)
     dashboard = build_portfolio_dashboard(
+        portfolio_db=_portfolio_db(user),
         lookback_days=date_range.lookback_days,
         start_date=date_range.start_date,
         end_date=date_range.end_date,
@@ -122,6 +153,7 @@ def dashboard_payload(
 def render_page(
     page: str,
     *,
+    user: AuthUser | None = None,
     run: bool = False,
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     start_date: str | None = None,
@@ -141,6 +173,7 @@ def render_page(
     if run:
         try:
             dashboard = build_portfolio_dashboard(
+                portfolio_db=_portfolio_db(user),
                 lookback_days=date_range.lookback_days,
                 start_date=date_range.start_date,
                 end_date=date_range.end_date,
@@ -168,6 +201,7 @@ def render_page(
         if run and page_error is None:
             try:
                 optimization = build_portfolio_optimization(
+                    portfolio_db=_portfolio_db(user),
                     lookback_days=date_range.lookback_days,
                     start_date=date_range.start_date,
                     end_date=date_range.end_date,
@@ -186,11 +220,11 @@ def render_page(
             "max_position_pct": max_position_pct,
             "cash_buffer_pct": cash_buffer_pct,
         }
-        return _prepare_portfolio_html(page, portfolio_web._optimization_page(ctx))
-    return _prepare_portfolio_html(page, renderers.get(page, portfolio_web._overview_page)(ctx))
+        return _prepare_portfolio_html(page, portfolio_web._optimization_page(ctx), user=user)
+    return _prepare_portfolio_html(page, renderers.get(page, portfolio_web._overview_page)(ctx), user=user)
 
 
-def create_trade(form: dict[str, str]) -> None:
+def create_trade(form: dict[str, str], *, user: AuthUser | None = None) -> None:
     add_trade(
         trade_date=form.get("trade_date", ""),
         ticker=form.get("ticker", ""),
@@ -199,16 +233,18 @@ def create_trade(form: dict[str, str]) -> None:
         price=float(form.get("price", "0") or 0),
         fees=float(form.get("fees", "0") or 0),
         notes=form.get("notes", ""),
+        db_path=_portfolio_db(user),
     )
 
 
-def remove_trade(trade_id: int) -> None:
-    delete_trade(int(trade_id))
+def remove_trade(trade_id: int, *, user: AuthUser | None = None) -> None:
+    delete_trade(int(trade_id), db_path=_portfolio_db(user))
 
 
-def virtual_trade_payload(form: dict[str, str]) -> dict[str, object]:
+def virtual_trade_payload(form: dict[str, str], *, user: AuthUser | None = None) -> dict[str, object]:
     date_range = _latest_db_range(int(form.get("lookback_days", DEFAULT_LOOKBACK_DAYS) or DEFAULT_LOOKBACK_DAYS))
     result = analyze_virtual_trade(
+        portfolio_db=_portfolio_db(user),
         ticker=form.get("ticker", ""),
         side=form.get("side", ""),
         quantity=float(form.get("quantity", "0") or 0),
@@ -229,7 +265,7 @@ def virtual_trade_payload(form: dict[str, str]) -> dict[str, object]:
     }
 
 
-def render_virtual_trade(form: dict[str, str]) -> str:
+def render_virtual_trade(form: dict[str, str], *, user: AuthUser | None = None) -> str:
     date_range = resolve_range(
         form.get("start_date"),
         form.get("end_date"),
@@ -240,6 +276,7 @@ def render_virtual_trade(form: dict[str, str]) -> str:
     dashboard_error = None
     try:
         dashboard = build_portfolio_dashboard(
+            portfolio_db=_portfolio_db(user),
             lookback_days=date_range.lookback_days,
             start_date=date_range.start_date,
             end_date=date_range.end_date,
@@ -247,6 +284,7 @@ def render_virtual_trade(form: dict[str, str]) -> str:
     except Exception as exc:
         dashboard_error = f"{type(exc).__name__}: {exc}"
     result = analyze_virtual_trade(
+        portfolio_db=_portfolio_db(user),
         ticker=form.get("ticker", ""),
         side=form.get("side", ""),
         quantity=float(form.get("quantity", "0") or 0),
@@ -268,4 +306,4 @@ def render_virtual_trade(form: dict[str, str]) -> str:
             virtual_result=result,
         )
     )
-    return _prepare_portfolio_html("virtual-trade", html)
+    return _prepare_portfolio_html("virtual-trade", html, user=user)

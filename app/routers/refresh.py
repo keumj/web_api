@@ -4,21 +4,24 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from app.form import read_form
-from app.services import portfolio_service, refresh_service
+from app.services import auth_service, portfolio_service, refresh_service
 
 router = APIRouter()
 
 
 @router.get("/refresh", response_class=HTMLResponse)
 def refresh_page(
+    request: Request,
     lookback_days: int = portfolio_service.DEFAULT_LOOKBACK_DAYS,
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> HTMLResponse:
+    user = auth_service.current_user(request)
     return HTMLResponse(refresh_service.render_original_refresh_page(
         lookback_days=lookback_days,
         start_date=start_date,
         end_date=end_date,
+        admin=bool(user and user.is_admin),
     ))
 
 
@@ -42,6 +45,7 @@ async def run_refresh(request: Request) -> Response:
         lookback_days=int(form.get("lookback_days", portfolio_service.DEFAULT_LOOKBACK_DAYS) or portfolio_service.DEFAULT_LOOKBACK_DAYS),
         start_date=form.get("start_date") or None,
         end_date=form.get("end_date") or None,
+        admin=bool((user := auth_service.current_user(request)) and user.is_admin),
     ))
 
 

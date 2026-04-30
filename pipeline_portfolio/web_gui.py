@@ -117,7 +117,7 @@ def _base_css() -> str:
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", "Noto Sans KR", sans-serif; }
-    .wrap { max-width: 1460px; margin: 0 auto; padding: 20px; }
+    .wrap { width: 100%; max-width: 1460px; margin: 0 auto; padding: 20px; }
     .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
     .page-head h1 { margin: 0; font-size: 24px; }
     .page-credit { color: var(--muted); font-size: 11px; white-space: nowrap; padding-top: 4px; }
@@ -126,12 +126,12 @@ def _base_css() -> str:
     .nav a { text-decoration: none; color: #111; border: 1px solid #111; background: #fff; border-radius: 999px; padding: 7px 12px; font-size: 13px; }
     .nav a:hover { background: #eee; }
     .nav a.active { background: #111; color: #fff; border-color: #111; }
-    .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+    .card { min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
     .stack { display: grid; gap: 12px; }
-    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(320px, 1fr)); gap: 12px; }
-    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 12px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
     .metrics { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 10px; margin-top: 12px; }
-    .metric { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+    .metric { min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
     .metric span { display: block; font-size: 12px; color: var(--muted); }
     .metric strong { display: block; margin-top: 5px; font-size: 18px; line-height: 1.3; }
     .chart-img { width: 100%; height: auto; border-radius: 8px; margin-top: 10px; border: 1px solid var(--line); }
@@ -147,12 +147,12 @@ def _base_css() -> str:
     .notice a { color: var(--accent); text-decoration: underline; }
     .notice.ok { background: var(--ok-bg); border: 1px solid var(--ok-line); }
     .notice.err { background: var(--err-bg); border: 1px solid var(--err-line); }
-    .table-wrap { width: 100%; overflow-x: auto; }
-    .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .data-table th, .data-table td { border: 1px solid var(--line); padding: 6px; text-align: left; vertical-align: top; }
+    .table-wrap { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .data-table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 12px; }
+    .data-table th, .data-table td { border: 1px solid var(--line); padding: 6px; text-align: left; vertical-align: top; white-space: nowrap; }
     .small { font-size: 12px; color: var(--muted); }
-    .split-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(360px, 1fr)); gap: 10px; }
-    .pane { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+    .split-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .pane { min-width: 0; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
     .pane h3 { margin: 0 0 8px 0; font-size: 14px; }
     .line-list { height: 480px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 8px; }
     .line { font-family: Consolas, "Courier New", monospace; font-size: 12px; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid #eef2f7; padding: 3px 2px; }
@@ -274,7 +274,7 @@ def _base_css() -> str:
     @media (max-width: 1100px) {
       .form-grid, .form-grid.form-virtual { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
       .metrics { grid-template-columns: repeat(2, minmax(160px, 1fr)); }
-      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .grid-2, .grid-3, .split-grid { grid-template-columns: 1fr; }
       .refresh-card-head { grid-template-columns: 1fr; }
       .refresh-action-row { grid-template-columns: 1fr; }
       .refresh-action-row button { width: 100%; }
