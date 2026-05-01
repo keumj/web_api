@@ -18,14 +18,17 @@ data/.yfinance_tz_cache/
 data/.yfinance_cache/
 
 # Data directory cleanup: ignore all sqlite and large csv files
-data/krx_market_caps.csv
-data/krx_shared_db/
-data/**/*.sqlite*
-data/**/*.db
-data/**/*.csv
+#data/krx_market_caps.csv
+#data/krx_shared_db/
+#data/**/*.sqlite*
+#data/**/*.db
+#data/**/*.csv
+data/price_cache/*.csv
+data/technical_ohlcv_cache/*.csv
+data/portfolio/**
 
 # Keep essential config files if any (example)
-!data/sp500_components_full.csv
+#!data/sp500_components_full.csv
 
 data/test_tmp_*/
 data/tmp*/
