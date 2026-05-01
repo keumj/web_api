@@ -23,7 +23,15 @@ class LanAccessMiddleware(BaseHTTPMiddleware):
 class AuthMiddleware(BaseHTTPMiddleware):
     """Require a signed login session for browser/API access."""
 
-    ADMIN_ONLY_PATHS = ("/docs", "/redoc", "/openapi.json")
+    ADMIN_ONLY_PATHS = (
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+        "/refresh",
+        "/refresh_status",
+        "/run_refresh",
+        "/api/refresh",
+    )
     EXEMPT_PREFIXES = (
         "/",
         "/login",
