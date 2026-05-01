@@ -31,6 +31,13 @@ DEFAULT_START_DATE = "2025-12-31"
 HISTORICAL_PAGES = {"virtual-trade", "optimization"}
 
 
+def _remove_refresh_links(soup: BeautifulSoup) -> None:
+    for link in soup.find_all("a", href=True):
+        href = str(link.get("href") or "")
+        if href == "/refresh" or href.startswith("/refresh?") or href.startswith("/refresh/"):
+            link.decompose()
+
+
 @dataclass
 class PortfolioRange:
     lookback_days: int
@@ -40,6 +47,7 @@ class PortfolioRange:
 
 def _prepare_portfolio_html(page: str, html: str, *, user: AuthUser | None = None) -> str:
     html = add_start_page_link(html)
+    soup: BeautifulSoup | None = None
     if user is not None:
         soup = BeautifulSoup(html, "html.parser")
         wrap = soup.select_one(".wrap")
@@ -63,6 +71,11 @@ def _prepare_portfolio_html(page: str, html: str, *, user: AuthUser | None = Non
             bar.append(label)
             bar.append(actions)
             wrap.insert(1, bar)
+    if user is None or not user.is_admin:
+        if soup is None:
+            soup = BeautifulSoup(html, "html.parser")
+        _remove_refresh_links(soup)
+    if soup is not None:
         html = str(soup)
     if page not in HISTORICAL_PAGES:
         return html
