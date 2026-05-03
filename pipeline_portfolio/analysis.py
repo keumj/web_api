@@ -19,6 +19,7 @@ from pipeline_common.shared_sp500_prices_sql import (
     shared_prices_sqlite_path,
 )
 from pipeline_stock_news.analysis import heuristic_title_sentiment
+from app.services import db_service
 
 import matplotlib
 matplotlib.use("Agg")
@@ -134,6 +135,40 @@ def portfolio_db_path(db_path: Path | str | None = None) -> Path:
     return DEFAULT_PORTFOLIO_DB_ROOT / DEFAULT_PORTFOLIO_DB_NAME
 
 
+def _portfolio_storage_label(db_path: Path | str | None = None, *, user_id: str | None = None) -> str:
+    if user_id and db_service.using_remote_app_db():
+        return f"{db_service.storage_label()} / portfolio_trades user_id={user_id}"
+    return str(portfolio_db_path(db_path).resolve())
+
+
+def _ensure_remote_portfolio_db() -> None:
+    with db_service.app_db_connection() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS portfolio_trades (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                trade_date TEXT NOT NULL,
+                ticker TEXT NOT NULL,
+                side TEXT NOT NULL CHECK(side IN ('BUY', 'SELL')),
+                quantity REAL NOT NULL CHECK(quantity > 0),
+                price REAL NOT NULL CHECK(price > 0),
+                fees REAL NOT NULL DEFAULT 0,
+                notes TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_portfolio_trades_user_date ON portfolio_trades(user_id, trade_date)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_portfolio_trades_user_ticker_date ON portfolio_trades(user_id, ticker, trade_date)"
+        )
+        conn.commit()
+
+
 def _get_db_max_date(shared_db: Path | str | None = None) -> pd.Timestamp:
     """데이터베이스에서 실제 가격 데이터가 있는 가장 최신 날짜를 조회합니다 (Read-only)."""
     target = _shared_db_path(shared_db)
@@ -192,8 +227,8 @@ def add_trade(
     fees: float = 0.0,
     notes: str = "",
     db_path: Path | str | None = None,
+    user_id: str | None = None,
 ) -> int:
-    target = ensure_portfolio_db(db_path)
     side_clean = str(side or "").strip().upper()
     if side_clean not in {"BUY", "SELL"}:
         raise ValueError("side must be BUY or SELL")
@@ -208,6 +243,20 @@ def add_trade(
         raise ValueError("quantity and price must be positive")
     if fee_value < 0:
         raise ValueError("fees must be non-negative")
+    if user_id and db_service.using_remote_app_db():
+        _ensure_remote_portfolio_db()
+        with db_service.app_db_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO portfolio_trades(user_id, trade_date, ticker, side, quantity, price, fees, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (str(user_id), trade_ts, ticker_clean, side_clean, quantity_value, price_value, fee_value, str(notes or "").strip()),
+            )
+            conn.commit()
+            row = conn.execute("SELECT last_insert_rowid()").fetchone()
+            return int(row[0] or 0) if row else 0
+    target = ensure_portfolio_db(db_path)
     with sqlite3.connect(target) as conn:
         cur = conn.execute(
             """
@@ -224,11 +273,22 @@ def delete_trade(
     trade_id: int,
     *,
     db_path: Path | str | None = None,
+    user_id: str | None = None,
 ) -> bool:
-    target = ensure_portfolio_db(db_path)
     trade_id_value = int(trade_id)
     if trade_id_value <= 0:
         raise ValueError("trade_id must be positive")
+    if user_id and db_service.using_remote_app_db():
+        _ensure_remote_portfolio_db()
+        with db_service.app_db_connection() as conn:
+            conn.execute(
+                "DELETE FROM portfolio_trades WHERE id = ? AND user_id = ?",
+                (trade_id_value, str(user_id)),
+            )
+            conn.commit()
+            row = conn.execute("SELECT changes()").fetchone()
+            return int(row[0] or 0) > 0 if row else False
+    target = ensure_portfolio_db(db_path)
     with sqlite3.connect(target) as conn:
         cur = conn.execute(
             "DELETE FROM portfolio_trades WHERE id = ?",
@@ -238,7 +298,22 @@ def delete_trade(
         return int(cur.rowcount or 0) > 0
 
 
-def load_trades(db_path: Path | str | None = None) -> pd.DataFrame:
+def load_trades(db_path: Path | str | None = None, *, user_id: str | None = None) -> pd.DataFrame:
+    if user_id and db_service.using_remote_app_db():
+        _ensure_remote_portfolio_db()
+        columns = ["id", "trade_date", "ticker", "side", "quantity", "price", "fees", "notes", "created_at"]
+        with db_service.app_db_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, trade_date, ticker, side, quantity, price, fees, notes, created_at
+                FROM portfolio_trades
+                WHERE user_id = ?
+                ORDER BY trade_date ASC, CASE WHEN ticker = 'CASH' THEN 0 ELSE 1 END ASC, id ASC
+                """,
+                (str(user_id),),
+            ).fetchall()
+        frame = pd.DataFrame([tuple(row) for row in rows], columns=columns)
+        return _normalize_trades_frame(frame)
     target = ensure_portfolio_db(db_path)
     with sqlite3.connect(target) as conn:
         frame = pd.read_sql_query(
@@ -249,6 +324,10 @@ def load_trades(db_path: Path | str | None = None) -> pd.DataFrame:
             """,
             conn,
         )
+    return _normalize_trades_frame(frame)
+
+
+def _normalize_trades_frame(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty:
         return frame
     frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="coerce")
@@ -1936,13 +2015,14 @@ def _forecast_return_proxy(close_history: pd.DataFrame, ticker: str, horizon_day
 def build_portfolio_dashboard(
     *,
     portfolio_db: Path | str | None = None,
+    portfolio_user_id: str | None = None,
     shared_db: Path | str | None = None,
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> PortfolioDashboard:
     lookback = max(int(lookback_days), 21)
-    trades_all = load_trades(portfolio_db)
+    trades_all = load_trades(portfolio_db, user_id=portfolio_user_id)
     db_max_ts = _get_db_max_date(shared_db)
     if end_date:
         req_end = pd.Timestamp(end_date).normalize()
@@ -1974,7 +2054,7 @@ def build_portfolio_dashboard(
             style_exposure=pd.DataFrame(),
             scoring=pd.DataFrame(),
             diagnostics={
-                "portfolio_db": str(portfolio_db_path(portfolio_db).resolve()),
+                "portfolio_db": _portfolio_storage_label(portfolio_db, user_id=portfolio_user_id),
                 "shared_db": str(_shared_db_path(shared_db).resolve()),
                 "component_source": component_source,
                 "price_source": "not_used",
@@ -2120,7 +2200,7 @@ def build_portfolio_dashboard(
         end_ts=end_ts
     )
     diagnostics = {
-        "portfolio_db": str(portfolio_db_path(portfolio_db).resolve()),
+        "portfolio_db": _portfolio_storage_label(portfolio_db, user_id=portfolio_user_id),
         "shared_db": str(_shared_db_path(shared_db).resolve()),
         "component_source": component_source,
         "price_source": position_sources.get("price_source", "sqlite"),
@@ -2169,6 +2249,7 @@ def analyze_virtual_trade(
     price: float | None = None,
     fees: float = 0.0,
     portfolio_db: Path | str | None = None,
+    portfolio_user_id: str | None = None,
     shared_db: Path | str | None = None,
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     start_date: str | None = None,
@@ -2186,6 +2267,7 @@ def analyze_virtual_trade(
         raise ValueError("quantity must be positive")
     before = build_portfolio_dashboard(
         portfolio_db=portfolio_db,
+        portfolio_user_id=portfolio_user_id,
         shared_db=shared_db,
         lookback_days=lookback_days,
         start_date=start_date,
@@ -2333,6 +2415,7 @@ def analyze_virtual_trade(
 def build_portfolio_optimization(
     *,
     portfolio_db: Path | str | None = None,
+    portfolio_user_id: str | None = None,
     shared_db: Path | str | None = None,
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     start_date: str | None = None,
@@ -2344,6 +2427,7 @@ def build_portfolio_optimization(
 ) -> OptimizationResult:
     dashboard = build_portfolio_dashboard(
         portfolio_db=portfolio_db,
+        portfolio_user_id=portfolio_user_id,
         shared_db=shared_db,
         lookback_days=lookback_days,
         start_date=start_date,

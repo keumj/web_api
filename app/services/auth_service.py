@@ -6,7 +6,6 @@ import hmac
 import json
 import re
 import secrets
-import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +14,7 @@ from typing import Any
 from fastapi import Request
 
 from app.settings import settings
+from app.services import db_service
 
 
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
@@ -47,6 +47,10 @@ def _b64url_decode(data: str) -> bytes:
 
 
 def _session_secret() -> bytes:
+    if settings.auth_session_secret:
+        return hashlib.sha256(settings.auth_session_secret.encode("utf-8")).digest()
+    if db_service.using_remote_app_db():
+        raise RuntimeError("KEUMJM_AUTH_SECRET must be set when using Turso/remote app DB storage.")
     path = _secret_path()
     if path.exists():
         return path.read_bytes()
@@ -58,8 +62,9 @@ def _session_secret() -> bytes:
 
 def ensure_auth_db() -> Path:
     path = _auth_db_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path) as conn:
+    if not db_service.using_remote_app_db():
+        path.parent.mkdir(parents=True, exist_ok=True)
+    with db_service.app_db_connection() as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -83,13 +88,13 @@ def ensure_auth_db() -> Path:
     return path
 
 
-def _ensure_user_column(conn: sqlite3.Connection, name: str, definition: str) -> None:
+def _ensure_user_column(conn, name: str, definition: str) -> None:
     cols = {str(row[1]) for row in conn.execute("PRAGMA table_info(users)").fetchall()}
     if name not in cols:
         conn.execute(f"ALTER TABLE users ADD COLUMN {name} {definition}")
 
 
-def _ensure_at_least_one_admin(conn: sqlite3.Connection) -> None:
+def _ensure_at_least_one_admin(conn) -> None:
     user_total = int(conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] or 0)
     if user_total == 0:
         return
@@ -101,7 +106,7 @@ def _ensure_at_least_one_admin(conn: sqlite3.Connection) -> None:
         conn.execute("UPDATE users SET is_admin = 1, is_active = 1 WHERE id = ?", (str(row[0]),))
 
 
-def _ensure_bootstrap_admin(conn: sqlite3.Connection) -> None:
+def _ensure_bootstrap_admin(conn) -> None:
     if not settings.bootstrap_admin_username or not settings.bootstrap_admin_password:
         return
 
@@ -131,8 +136,8 @@ def _ensure_bootstrap_admin(conn: sqlite3.Connection) -> None:
 
 
 def user_count() -> int:
-    path = ensure_auth_db()
-    with sqlite3.connect(path) as conn:
+    ensure_auth_db()
+    with db_service.app_db_connection() as conn:
         row = conn.execute("SELECT COUNT(*) FROM users").fetchone()
     return int(row[0] or 0) if row else 0
 
@@ -166,9 +171,9 @@ def create_user(username: str, password: str, *, is_admin: bool | None = None, r
     salt = secrets.token_bytes(16)
     password_hash = _hash_password(raw_password, salt)
     admin_flag = 1 if (existing_count == 0 if is_admin is None else is_admin) else 0
-    path = ensure_auth_db()
+    ensure_auth_db()
     try:
-        with sqlite3.connect(path) as conn:
+        with db_service.app_db_connection() as conn:
             conn.execute(
                 """
                 INSERT INTO users(id, username, password_salt, password_hash, iterations, is_admin, is_active)
@@ -177,14 +182,17 @@ def create_user(username: str, password: str, *, is_admin: bool | None = None, r
                 (user_id, clean_username, _b64url_encode(salt), password_hash, PBKDF2_ITERATIONS, admin_flag),
             )
             conn.commit()
-    except sqlite3.IntegrityError as exc:
+    except Exception as exc:
+        message = str(exc).lower()
+        if not ("unique" in message or "constraint" in message or "already exists" in message):
+            raise
         raise ValueError("이미 사용 중인 사용자명입니다.") from exc
     return AuthUser(id=user_id, username=clean_username, is_admin=bool(admin_flag))
 
 
 def get_user_by_id(user_id: str) -> AuthUser | None:
-    path = ensure_auth_db()
-    with sqlite3.connect(path) as conn:
+    ensure_auth_db()
+    with db_service.app_db_connection() as conn:
         row = conn.execute("SELECT id, username, is_admin FROM users WHERE id = ? AND is_active = 1", (str(user_id or ""),)).fetchone()
     if not row:
         return None
@@ -193,8 +201,8 @@ def get_user_by_id(user_id: str) -> AuthUser | None:
 
 def authenticate(username: str, password: str) -> AuthUser | None:
     clean_username = str(username or "").strip().lower()
-    path = ensure_auth_db()
-    with sqlite3.connect(path) as conn:
+    ensure_auth_db()
+    with db_service.app_db_connection() as conn:
         row = conn.execute(
             """
             SELECT id, username, password_salt, password_hash, iterations, is_admin, is_active
@@ -262,9 +270,16 @@ def portfolio_db_for_user(user: AuthUser | str) -> Path:
     return root / "users" / safe_id / "portfolio.sqlite"
 
 
+def portfolio_storage_for_user(user: AuthUser | str) -> str:
+    user_id = user.id if isinstance(user, AuthUser) else str(user)
+    if db_service.using_remote_app_db():
+        return f"{db_service.storage_label()} / portfolio_trades user_id={user_id}"
+    return str(portfolio_db_for_user(user_id))
+
+
 def list_users() -> list[dict[str, object]]:
-    path = ensure_auth_db()
-    with sqlite3.connect(path) as conn:
+    ensure_auth_db()
+    with db_service.app_db_connection() as conn:
         rows = conn.execute(
             """
             SELECT id, username, is_admin, is_active, created_at, last_login_at
@@ -280,19 +295,19 @@ def list_users() -> list[dict[str, object]]:
             "is_active": bool(row[3]),
             "created_at": row[4],
             "last_login_at": row[5],
-            "portfolio_db": str(portfolio_db_for_user(str(row[0]))),
+            "portfolio_db": portfolio_storage_for_user(str(row[0])),
         }
         for row in rows
     ]
 
 
-def _admin_count(conn: sqlite3.Connection) -> int:
+def _admin_count(conn) -> int:
     return int(conn.execute("SELECT COUNT(*) FROM users WHERE is_admin = 1 AND is_active = 1").fetchone()[0] or 0)
 
 
 def set_user_active(user_id: str, is_active: bool) -> None:
-    path = ensure_auth_db()
-    with sqlite3.connect(path) as conn:
+    ensure_auth_db()
+    with db_service.app_db_connection() as conn:
         row = conn.execute("SELECT is_admin FROM users WHERE id = ?", (str(user_id),)).fetchone()
         if not row:
             raise ValueError("사용자를 찾을 수 없습니다.")
@@ -303,8 +318,8 @@ def set_user_active(user_id: str, is_active: bool) -> None:
 
 
 def set_user_admin(user_id: str, is_admin: bool) -> None:
-    path = ensure_auth_db()
-    with sqlite3.connect(path) as conn:
+    ensure_auth_db()
+    with db_service.app_db_connection() as conn:
         row = conn.execute("SELECT is_admin FROM users WHERE id = ?", (str(user_id),)).fetchone()
         if not row:
             raise ValueError("사용자를 찾을 수 없습니다.")
@@ -318,8 +333,8 @@ def reset_password(user_id: str, password: str) -> None:
     raw_password = validate_password(password)
     salt = secrets.token_bytes(16)
     password_hash = _hash_password(raw_password, salt)
-    path = ensure_auth_db()
-    with sqlite3.connect(path) as conn:
+    ensure_auth_db()
+    with db_service.app_db_connection() as conn:
         cur = conn.execute(
             """
             UPDATE users
