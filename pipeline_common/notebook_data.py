@@ -63,6 +63,29 @@ def _prefer_live_data() -> bool:
     return raw not in {"0", "false", "no", "off"}
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _running_on_render() -> bool:
+    return bool(os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID"))
+
+
+def _sp500_local_csv_fallback_enabled() -> bool:
+    # Render can run with only the shared SQLite file plus the small components
+    # CSV. Local/dev keeps the historical CSV fallback unless explicitly off.
+    return _env_bool("KEUMJ_SP500_LOCAL_CSV_FALLBACK", not _running_on_render())
+
+
+def _sp500_synthetic_fallback_enabled() -> bool:
+    # Synthetic data is useful for notebooks/dev demos, but hosted analysis
+    # should surface missing production data instead of silently inventing it.
+    return _env_bool("KEUMJ_SP500_SYNTHETIC_FALLBACK", not _running_on_render())
+
+
 
 
 def _insecure_ssl_enabled() -> bool:
@@ -722,13 +745,17 @@ def fetch_sp500_close_prices(symbols: list[str], start_date: str) -> tuple[pd.Da
     if shared_cached_df is not None:
         return shared_cached_df, shared_cached_src or "shared_db"
 
-    local_wide_df, local_wide_src = _load_prices_wide_local(normalized_symbols, start_date)
-    if local_wide_df is not None:
-        return local_wide_df, local_wide_src or "local_csv"
+    if _sp500_local_csv_fallback_enabled():
+        local_wide_df, local_wide_src = _load_prices_wide_local(normalized_symbols, start_date)
+        if local_wide_df is not None:
+            return local_wide_df, local_wide_src or "local_csv"
 
-    local_panel_df, local_panel_src = _load_prices_panel_local(normalized_symbols, start_date)
-    if local_panel_df is not None:
-        return local_panel_df, local_panel_src or "local_csv"
+        local_panel_df, local_panel_src = _load_prices_panel_local(normalized_symbols, start_date)
+        if local_panel_df is not None:
+            return local_panel_df, local_panel_src or "local_csv"
+
+    if not _sp500_synthetic_fallback_enabled():
+        return pd.DataFrame(columns=normalized_symbols), "unavailable:shared_sqlite_missing_or_empty"
 
     rng = np.random.default_rng(123)
     idx = pd.bdate_range(start=start_date, end=pd.Timestamp.today().normalize())

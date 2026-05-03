@@ -17,6 +17,12 @@ data/users/
 data/.yfinance_tz_cache/
 data/.yfinance_cache/
 
+# Generated S&P 500 refresh snapshots. Render reads the shared SQLite DB instead.
+data/sp500_all_metrics_prices.csv
+data/sp500_close_prices.csv
+data/sp500_market_caps.csv
+data/sp500_shares.csv
+
 # Data directory cleanup: ignore all sqlite and large csv files
 #data/krx_market_caps.csv
 #data/krx_shared_db/
