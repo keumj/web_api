@@ -44,6 +44,25 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _running_on_render() -> bool:
+    return bool(os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID"))
+
+
+def _forecast_light_mode() -> bool:
+    return _env_bool("KEUMJM_FORECAST_LIGHT_MODE", _running_on_render())
+
+
+def _relative_features_enabled() -> bool:
+    return _env_bool("KEUMJ_STOCK_RELATIVE_FEATURES", not _forecast_light_mode())
+
+
 @dataclass
 class StockForecastResult:
     summary: pd.DataFrame
@@ -233,6 +252,10 @@ def _relative_feature_frame(ticker: str, close: pd.Series) -> tuple[pd.DataFrame
     ticker_clean = str(ticker or "").strip().upper()
     if not ticker_clean or close.empty:
         return pd.DataFrame(index=close.index), pd.DataFrame(columns=["metric", "value"])
+    if not _relative_features_enabled():
+        return pd.DataFrame(index=close.index), pd.DataFrame(
+            [{"metric": "relative_feature_status", "value": "disabled: light forecast mode"}]
+        )
 
     try:
         components, components_source = _load_sp500_components_full()
@@ -954,22 +977,23 @@ def _build_supervised_dataset(
 
 
 def _build_model_specs(random_state: int) -> list[tuple[str, object]]:
+    light_mode = _forecast_light_mode()
     elastic = Pipeline(
         [
             ("scaler", StandardScaler()),
             (
                 "model",
                 ElasticNetCV(
-                    l1_ratio=[0.1, 0.5, 0.9],
-                    alphas=np.logspace(-4, 1, 20),
-                    cv=5,
-                    max_iter=10000,
+                    l1_ratio=[0.1, 0.5, 0.9] if not light_mode else [0.5],
+                    alphas=np.logspace(-4, 1, 20 if not light_mode else 8),
+                    cv=5 if not light_mode else 3,
+                    max_iter=10000 if not light_mode else 3000,
                 ),
             ),
         ]
     )
     rf = RandomForestRegressor(
-        n_estimators=300,
+        n_estimators=300 if not light_mode else 60,
         min_samples_leaf=5,
         random_state=random_state,
         n_jobs=1,
@@ -977,7 +1001,7 @@ def _build_model_specs(random_state: int) -> list[tuple[str, object]]:
     gb = GradientBoostingRegressor(
         max_depth=4,
         learning_rate=0.05,
-        n_estimators=300,
+        n_estimators=300 if not light_mode else 80,
         random_state=random_state,
     )
     return [
@@ -988,16 +1012,17 @@ def _build_model_specs(random_state: int) -> list[tuple[str, object]]:
 
 
 def _build_direction_model_specs(random_state: int) -> list[tuple[str, object]]:
+    light_mode = _forecast_light_mode()
     logistic = Pipeline(
         [
             ("scaler", StandardScaler()),
             (
                 "model",
                 LogisticRegressionCV(
-                    Cs=10,
-                    cv=5,
+                    Cs=10 if not light_mode else 4,
+                    cv=5 if not light_mode else 3,
                     scoring="neg_log_loss",
-                    max_iter=5000,
+                    max_iter=5000 if not light_mode else 2000,
                     class_weight="balanced",
                     l1_ratios=(0.0,),
                     random_state=random_state,
@@ -1006,13 +1031,13 @@ def _build_direction_model_specs(random_state: int) -> list[tuple[str, object]]:
         ]
     )
     rf = RandomForestClassifier(
-        n_estimators=250,
+        n_estimators=250 if not light_mode else 60,
         min_samples_leaf=5,
         random_state=random_state,
         n_jobs=1,
     )
     gb = GradientBoostingClassifier(
-        n_estimators=200,
+        n_estimators=200 if not light_mode else 80,
         learning_rate=0.05,
         max_depth=2,
         random_state=random_state,
