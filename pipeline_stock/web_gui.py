@@ -5171,7 +5171,6 @@ def _has_runtime_data(root: Path) -> bool:
     data_dir = root / "data"
     return (
         (data_dir / "sp500_components_full.csv").is_file()
-        and (data_dir / "sp500_all_metrics_prices.csv").is_file()
         and (data_dir / "sp500_shared_db" / "sp500_shared_prices.sqlite").is_file()
     )
 
