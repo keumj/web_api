@@ -63,6 +63,10 @@ def _relative_features_enabled() -> bool:
     return _env_bool("KEUMJ_STOCK_RELATIVE_FEATURES", not _forecast_light_mode())
 
 
+def _forecast_fast_linear_only() -> bool:
+    return _env_bool("KEUMJM_FORECAST_FAST_LINEAR_ONLY", _running_on_render())
+
+
 @dataclass
 class StockForecastResult:
     summary: pd.DataFrame
@@ -992,6 +996,9 @@ def _build_model_specs(random_state: int) -> list[tuple[str, object]]:
             ),
         ]
     )
+    if _forecast_fast_linear_only():
+        return [("elastic_net", elastic)]
+
     rf = RandomForestRegressor(
         n_estimators=300 if not light_mode else 60,
         min_samples_leaf=5,
@@ -1030,6 +1037,9 @@ def _build_direction_model_specs(random_state: int) -> list[tuple[str, object]]:
             ),
         ]
     )
+    if _forecast_fast_linear_only():
+        return [("logistic", logistic)]
+
     rf = RandomForestClassifier(
         n_estimators=250 if not light_mode else 60,
         min_samples_leaf=5,
