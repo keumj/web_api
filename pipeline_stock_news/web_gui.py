@@ -1234,8 +1234,7 @@ def _html_refresh_history_page(is_sub_page: bool = False) -> str:
 """
 def _build_dashboard_from_form(form: dict[str, str], page_key: str) -> StockNewsDashboard:
     ticker = form.get("ticker", "").strip().upper() or None
-    on_render = bool(os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID"))
-    light_mode = str(os.getenv("KEUMJM_NEWS_LIGHT_MODE", "true" if on_render else "false")).strip().lower() in {"1", "true", "yes", "on"}
+    light_mode = str(os.getenv("KEUMJM_NEWS_LIGHT_MODE", "false")).strip().lower() in {"1", "true", "yes", "on"}
     lookback_days = max(int(form.get("lookback_days", str(DEFAULT_LOOKBACK_DAYS)) or str(DEFAULT_LOOKBACK_DAYS)), 1)
     horizon_days = max(int(form.get("horizon_days", DEFAULT_EVENT_HORIZON_DAYS) or DEFAULT_EVENT_HORIZON_DAYS), 1)
     divergence_top_n = max(int(form.get("divergence_top_n", DEFAULT_DIVERGENCE_TOP_N) or DEFAULT_DIVERGENCE_TOP_N), 1)
