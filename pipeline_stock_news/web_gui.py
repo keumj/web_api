@@ -4,6 +4,7 @@ import base64
 import html
 import io
 import json
+import os
 import re
 import sqlite3
 import subprocess
@@ -1233,13 +1234,24 @@ def _html_refresh_history_page(is_sub_page: bool = False) -> str:
 """
 def _build_dashboard_from_form(form: dict[str, str], page_key: str) -> StockNewsDashboard:
     ticker = form.get("ticker", "").strip().upper() or None
+    on_render = bool(os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID"))
+    light_mode = str(os.getenv("KEUMJM_NEWS_LIGHT_MODE", "true" if on_render else "false")).strip().lower() in {"1", "true", "yes", "on"}
+    lookback_days = max(int(form.get("lookback_days", str(DEFAULT_LOOKBACK_DAYS)) or str(DEFAULT_LOOKBACK_DAYS)), 1)
+    horizon_days = max(int(form.get("horizon_days", DEFAULT_EVENT_HORIZON_DAYS) or DEFAULT_EVENT_HORIZON_DAYS), 1)
+    divergence_top_n = max(int(form.get("divergence_top_n", DEFAULT_DIVERGENCE_TOP_N) or DEFAULT_DIVERGENCE_TOP_N), 1)
+    topic_count = max(int(form.get("topic_count", DEFAULT_TOPIC_COUNT) or DEFAULT_TOPIC_COUNT), 2)
+    if light_mode:
+        lookback_days = min(lookback_days, int(os.getenv("KEUMJM_NEWS_MAX_LOOKBACK_DAYS", "14") or "14"))
+        horizon_days = min(horizon_days, int(os.getenv("KEUMJM_NEWS_MAX_HORIZON_DAYS", "3") or "3"))
+        divergence_top_n = min(divergence_top_n, int(os.getenv("KEUMJM_NEWS_MAX_TOP_N", "10") or "10"))
+        topic_count = min(topic_count, int(os.getenv("KEUMJM_NEWS_MAX_TOPIC_COUNT", "3") or "3"))
     return build_stock_news_dashboard( # This function needs to be exposed
         event_keywords=form.get("event_keywords", DEFAULT_EVENT_KEYWORDS),
         ticker=ticker,
-        lookback_days=max(int(form.get("lookback_days", str(DEFAULT_LOOKBACK_DAYS)) or str(DEFAULT_LOOKBACK_DAYS)), 1),
-        horizon_days=max(int(form.get("horizon_days", DEFAULT_EVENT_HORIZON_DAYS) or DEFAULT_EVENT_HORIZON_DAYS), 1),
-        divergence_top_n=max(int(form.get("divergence_top_n", DEFAULT_DIVERGENCE_TOP_N) or DEFAULT_DIVERGENCE_TOP_N), 1),
-        topic_count=max(int(form.get("topic_count", DEFAULT_TOPIC_COUNT) or DEFAULT_TOPIC_COUNT), 2),
+        lookback_days=lookback_days,
+        horizon_days=horizon_days,
+        divergence_top_n=divergence_top_n,
+        topic_count=topic_count,
         sections=PAGE_TO_SECTIONS.get(page_key),
     )
 
