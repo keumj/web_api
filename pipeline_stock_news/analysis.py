@@ -5,12 +5,11 @@ from dataclasses import dataclass
 from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
+import os
 import re
 
 import numpy as np
 import pandas as pd
-from sklearn.decomposition import LatentDirichletAllocation
-from sklearn.feature_extraction.text import CountVectorizer
 
 from pipeline_common.shared_sp500_prices_sql import shared_prices_sqlite_path
 
@@ -29,6 +28,35 @@ COMPONENTS_CSV_CANDIDATES = (
     Path("data/sp500_components_full.csv"),
     Path("data/sp500_components.csv"),
 )
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return int(raw.strip())
+    except ValueError:
+        return default
+
+
+def _running_on_render() -> bool:
+    return bool(os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID"))
+
+
+def _news_light_mode() -> bool:
+    return _env_bool("KEUMJM_NEWS_LIGHT_MODE", _running_on_render())
+
+
+def _max_news_articles() -> int:
+    return max(_env_int("KEUMJM_NEWS_MAX_ARTICLES", 300 if _news_light_mode() else 0), 0)
 
 POSITIVE_TITLE_WORDS = {
     "approval",
@@ -344,6 +372,10 @@ def _load_market_context(
         query += " AND (" + " OR ".join("LOWER(title) LIKE ?" for _ in kw_list) + ")"
         params.extend([f"%{keyword}%" for keyword in kw_list])
     query += " ORDER BY publish_date DESC, id DESC"
+    max_rows = _max_news_articles()
+    if max_rows > 0:
+        query += " LIMIT ?"
+        params.append(max_rows)
     frame = pd.read_sql_query(query, conn, params=params)
     if frame.empty:
         return frame
@@ -692,10 +724,13 @@ def run_topic_model(
     if news.empty:
         empty = pd.DataFrame()
         return TopicModelResult(empty, empty, empty, start_ts.strftime("%Y-%m-%d"), end_ts.strftime("%Y-%m-%d"))
+    from sklearn.decomposition import LatentDirichletAllocation
+    from sklearn.feature_extraction.text import CountVectorizer
+
     titles = news["title"].fillna("").astype(str).tolist()
     vectorizer = CountVectorizer(
         stop_words=sorted(set(CountVectorizer(stop_words="english").get_stop_words() or set()).union(TOPIC_STOP_WORDS)),
-        max_features=600,
+        max_features=250 if _news_light_mode() else 600,
         min_df=2,
         token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z0-9&.-]{1,}\b",
     )
@@ -711,7 +746,12 @@ def run_topic_model(
         word_cloud = pd.DataFrame({"term": feature_names[order], "weight": counts[order]})
         return TopicModelResult(pd.DataFrame(), word_cloud, news[["ticker", "publish_date", "title"]].copy(), start_ts.strftime("%Y-%m-%d"), end_ts.strftime("%Y-%m-%d"))
     effective_topic_count = max(2, min(int(topic_count), matrix.shape[0] // 4 if matrix.shape[0] >= 8 else 2, matrix.shape[1]))
-    lda = LatentDirichletAllocation(n_components=effective_topic_count, random_state=42, learning_method="batch")
+    lda = LatentDirichletAllocation(
+        n_components=effective_topic_count,
+        random_state=42,
+        learning_method="online" if _news_light_mode() else "batch",
+        max_iter=5 if _news_light_mode() else 10,
+    )
     doc_topic = lda.fit_transform(matrix)
     topic_weights = doc_topic.mean(axis=0)
     dominant_topic = doc_topic.argmax(axis=1)
