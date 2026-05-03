@@ -35,3 +35,6 @@ data/tmp*/
 **/test_tmp_*/
 **/tmp*/
 tmpgzeyvcrs/
+
+# Local-only data refresh helper.
+refresh_local_data.cmd
