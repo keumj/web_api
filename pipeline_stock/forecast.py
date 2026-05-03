@@ -63,10 +63,6 @@ def _relative_features_enabled() -> bool:
     return _env_bool("KEUMJ_STOCK_RELATIVE_FEATURES", not _forecast_light_mode())
 
 
-def _forecast_fast_linear_only() -> bool:
-    return _env_bool("KEUMJM_FORECAST_FAST_LINEAR_ONLY", _running_on_render())
-
-
 @dataclass
 class StockForecastResult:
     summary: pd.DataFrame
@@ -996,19 +992,19 @@ def _build_model_specs(random_state: int) -> list[tuple[str, object]]:
             ),
         ]
     )
-    if _forecast_fast_linear_only():
-        return [("elastic_net", elastic)]
-
     rf = RandomForestRegressor(
-        n_estimators=300 if not light_mode else 60,
-        min_samples_leaf=5,
+        n_estimators=300 if not light_mode else 40,
+        max_depth=None if not light_mode else 6,
+        max_features=1.0 if not light_mode else 0.7,
+        min_samples_leaf=5 if not light_mode else 8,
         random_state=random_state,
         n_jobs=1,
     )
     gb = GradientBoostingRegressor(
         max_depth=4,
         learning_rate=0.05,
-        n_estimators=300 if not light_mode else 80,
+        n_estimators=300 if not light_mode else 50,
+        subsample=1.0 if not light_mode else 0.8,
         random_state=random_state,
     )
     return [
@@ -1037,19 +1033,19 @@ def _build_direction_model_specs(random_state: int) -> list[tuple[str, object]]:
             ),
         ]
     )
-    if _forecast_fast_linear_only():
-        return [("logistic", logistic)]
-
     rf = RandomForestClassifier(
-        n_estimators=250 if not light_mode else 60,
-        min_samples_leaf=5,
+        n_estimators=250 if not light_mode else 40,
+        max_depth=None if not light_mode else 6,
+        max_features=1.0 if not light_mode else 0.7,
+        min_samples_leaf=5 if not light_mode else 8,
         random_state=random_state,
         n_jobs=1,
     )
     gb = GradientBoostingClassifier(
-        n_estimators=200 if not light_mode else 80,
+        n_estimators=200 if not light_mode else 50,
         learning_rate=0.05,
         max_depth=2,
+        subsample=1.0 if not light_mode else 0.8,
         random_state=random_state,
     )
     return [
