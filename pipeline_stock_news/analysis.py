@@ -52,7 +52,7 @@ def _running_on_render() -> bool:
 
 
 def _news_light_mode() -> bool:
-    return _env_bool("KEUMJM_NEWS_LIGHT_MODE", _running_on_render())
+    return _env_bool("KEUMJM_NEWS_LIGHT_MODE", False)
 
 
 def _max_news_articles() -> int:
