@@ -330,6 +330,20 @@ def _resolve_window(
     return start_ts, end_ts
 
 
+def _latest_price_date(conn: sqlite3.Connection) -> pd.Timestamp | None:
+    row = conn.execute("SELECT MAX(date) FROM prices").fetchone()
+    if not row or not row[0]:
+        return None
+    return pd.Timestamp(str(row[0])).normalize()
+
+
+def _max_reference_date_for_forward(conn: sqlite3.Connection, forward_days: int) -> pd.Timestamp | None:
+    latest = _latest_price_date(conn)
+    if latest is None:
+        return None
+    return latest - pd.offsets.BDay(max(int(forward_days), 1))
+
+
 def _load_market_context(
     conn: sqlite3.Connection,
     *,
@@ -337,6 +351,7 @@ def _load_market_context(
     end_date: pd.Timestamp,
     ticker: str | None = None,
     keywords: list[str] | None = None,
+    max_reference_date: pd.Timestamp | None = None,
 ) -> pd.DataFrame:
     query = """
         SELECT
@@ -367,6 +382,9 @@ def _load_market_context(
     if ticker_clean:
         query += " AND ticker = ?"
         params.append(ticker_clean)
+    if max_reference_date is not None:
+        query += " AND reference_price_date IS NOT NULL AND date(reference_price_date) <= ?"
+        params.append(pd.Timestamp(max_reference_date).strftime("%Y-%m-%d"))
     kw_list = keywords or []
     if kw_list:
         query += " AND (" + " OR ".join("LOWER(title) LIKE ?" for _ in kw_list) + ")"
@@ -536,12 +554,14 @@ def run_event_study(
     _conn = conn if conn is not None else _connect(db_path)
     try:
         start_ts, end_ts = _resolve_window(_conn, start_date=start_date, end_date=end_date, lookback_days=lookback_days)
+        max_ref_date = _max_reference_date_for_forward(_conn, horizon_days)
         news = _load_market_context(
             _conn,
             start_date=start_ts,
             end_date=end_ts,
             ticker=ticker,
             keywords=keyword_list,
+            max_reference_date=max_ref_date,
         )
         if news.empty:
             empty = pd.DataFrame()
@@ -640,7 +660,15 @@ def run_divergence_scan(
     _conn = conn if conn is not None else _connect(db_path)
     try:
         start_ts, end_ts = _resolve_window(_conn, start_date=start_date, end_date=end_date, lookback_days=lookback_days)
-        news = _load_market_context(_conn, start_date=start_ts, end_date=end_ts, ticker=ticker, keywords=keyword_list)
+        max_ref_date = _max_reference_date_for_forward(_conn, 5)
+        news = _load_market_context(
+            _conn,
+            start_date=start_ts,
+            end_date=end_ts,
+            ticker=ticker,
+            keywords=keyword_list,
+            max_reference_date=max_ref_date,
+        )
         if news.empty:
             return DivergenceResult(pd.DataFrame(), start_ts.strftime("%Y-%m-%d"), end_ts.strftime("%Y-%m-%d"))
         refs = news["reference_price_date"].dropna()
@@ -803,7 +831,15 @@ def run_sector_spillover_monitor(
     _conn = conn if conn is not None else _connect(db_path)
     try:
         start_ts, end_ts = _resolve_window(_conn, start_date=start_date, end_date=end_date, lookback_days=lookback_days)
-        news = _load_market_context(_conn, start_date=start_ts, end_date=end_ts, ticker=ticker, keywords=keyword_list)
+        max_ref_date = _max_reference_date_for_forward(_conn, horizon_days)
+        news = _load_market_context(
+            _conn,
+            start_date=start_ts,
+            end_date=end_ts,
+            ticker=ticker,
+            keywords=keyword_list,
+            max_reference_date=max_ref_date,
+        )
         if news.empty:
             empty = pd.DataFrame()
             return SectorSpilloverResult(empty, empty, start_ts.strftime("%Y-%m-%d"), end_ts.strftime("%Y-%m-%d"))
@@ -930,7 +966,15 @@ def run_expectation_reset_tracker(
     _conn = conn if conn is not None else _connect(db_path)
     try:
         start_ts, end_ts = _resolve_window(_conn, start_date=start_date, end_date=end_date, lookback_days=lookback_days)
-        news = _load_market_context(_conn, start_date=start_ts, end_date=end_ts, ticker=ticker, keywords=keyword_list)
+        max_ref_date = _max_reference_date_for_forward(_conn, 5)
+        news = _load_market_context(
+            _conn,
+            start_date=start_ts,
+            end_date=end_ts,
+            ticker=ticker,
+            keywords=keyword_list,
+            max_reference_date=max_ref_date,
+        )
         if news.empty:
             return ExpectationResetResult(pd.DataFrame(), start_ts.strftime("%Y-%m-%d"), end_ts.strftime("%Y-%m-%d"))
         refs = news["reference_price_date"].dropna()
@@ -1003,7 +1047,15 @@ def run_volatility_regime_after_news(
     _conn = conn if conn is not None else _connect(db_path)
     try:
         start_ts, end_ts = _resolve_window(_conn, start_date=start_date, end_date=end_date, lookback_days=lookback_days)
-        news = _load_market_context(_conn, start_date=start_ts, end_date=end_ts, ticker=ticker, keywords=keyword_list)
+        max_ref_date = _max_reference_date_for_forward(_conn, post_days)
+        news = _load_market_context(
+            _conn,
+            start_date=start_ts,
+            end_date=end_ts,
+            ticker=ticker,
+            keywords=keyword_list,
+            max_reference_date=max_ref_date,
+        )
         if news.empty:
             empty = pd.DataFrame()
             return VolatilityRegimeResult(empty, empty, start_ts.strftime("%Y-%m-%d"), end_ts.strftime("%Y-%m-%d"))
