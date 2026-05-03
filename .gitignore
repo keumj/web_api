@@ -38,3 +38,4 @@ tmpgzeyvcrs/
 
 # Local-only data refresh helper.
 refresh_local_data.cmd
+scripts/refresh_status.py
