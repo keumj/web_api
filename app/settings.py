@@ -34,6 +34,14 @@ def _env_int(name: str, default: int) -> int:
     return int(raw.strip())
 
 
+def _env_first(*names: str, default: str = "") -> str:
+    for name in names:
+        raw = os.getenv(name)
+        if raw is not None and raw.strip():
+            return raw.strip()
+    return default
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "Keumjm Portfolio Lab"
@@ -56,8 +64,8 @@ class Settings:
     bootstrap_admin_username: str = os.getenv("KEUMJM_BOOTSTRAP_ADMIN_USERNAME", "").strip()
     bootstrap_admin_password: str = os.getenv("KEUMJM_BOOTSTRAP_ADMIN_PASSWORD", "")
     portfolio_db_root: Path = Path(os.getenv("KEUMJ_PORTFOLIO_DB_DIR", "data/portfolio"))
-    app_database_url: str = os.getenv("KEUMJM_DATABASE_URL", os.getenv("TURSO_DATABASE_URL", "")).strip()
-    app_database_auth_token: str = os.getenv("KEUMJM_DATABASE_AUTH_TOKEN", os.getenv("TURSO_AUTH_TOKEN", "")).strip()
+    app_database_url: str = _env_first("KEUMJM_DATABASE_URL", "TURSO_DATABASE_URL")
+    app_database_auth_token: str = _env_first("KEUMJM_DATABASE_AUTH_TOKEN", "TURSO_AUTH_TOKEN")
 
     def parsed_allowed_networks(self):
         return tuple(ip_network(cidr, strict=False) for cidr in self.allowed_cidrs)
