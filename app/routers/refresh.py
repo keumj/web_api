@@ -38,6 +38,12 @@ def refresh_status(request: Request) -> dict[str, object]:
     return refresh_service.original_status_payload()
 
 
+@router.get("/api/refresh/diagnostics")
+def refresh_diagnostics(request: Request) -> dict[str, object]:
+    _require_admin(request)
+    return refresh_service.diagnostics_payload()
+
+
 @router.post("/run_refresh")
 async def run_refresh(request: Request) -> Response:
     _require_admin(request)

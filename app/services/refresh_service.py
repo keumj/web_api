@@ -340,6 +340,49 @@ def original_status_payload() -> dict[str, object]:
     return {"running": running, "current_job_id": current_job_id, "jobs": list_jobs()}
 
 
+def diagnostics_payload() -> dict[str, object]:
+    root = settings.project_root
+    sqlite_path = root / "data" / "sp500_shared_db" / "sp500_shared_prices.sqlite"
+    info: dict[str, object] = {
+        "project_root": str(root),
+        "sqlite_path": str(sqlite_path),
+        "sqlite_exists": sqlite_path.exists(),
+        "sqlite_size_bytes": sqlite_path.stat().st_size if sqlite_path.exists() else None,
+        "jobs": {
+            job_id: {
+                "command": job.command,
+                "status": states[job_id].status,
+                "error": states[job_id].error,
+                "last_logs": states[job_id].logs[-20:],
+            }
+            for job_id, job in JOBS.items()
+        },
+    }
+    if sqlite_path.exists():
+        try:
+            with sqlite3.connect(sqlite_path) as conn:
+                tables = [
+                    str(row[0])
+                    for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
+                ]
+                info["tables"] = tables
+                for table, date_col in {
+                    "prices": "date",
+                    "news_articles": "publish_date",
+                    "fundamentals_quarterly": "fiscal_date",
+                }.items():
+                    if table not in tables:
+                        info[f"{table}_exists"] = False
+                        continue
+                    row = conn.execute(f"SELECT COUNT(*), MAX({date_col}) FROM {table}").fetchone()
+                    info[f"{table}_exists"] = True
+                    info[f"{table}_rows"] = int(row[0] or 0) if row else 0
+                    info[f"{table}_max_{date_col}"] = str(row[1]) if row and row[1] else None
+        except Exception as exc:
+            info["sqlite_error"] = f"{type(exc).__name__}: {exc}"
+    return info
+
+
 def _render_items_js() -> str:
     return """
       function escapeHtml(value) {
