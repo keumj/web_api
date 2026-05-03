@@ -228,7 +228,8 @@ def current_user(request: Request) -> AuthUser | None:
 def portfolio_db_for_user(user: AuthUser | str) -> Path:
     user_id = user.id if isinstance(user, AuthUser) else str(user)
     safe_id = re.sub(r"[^A-Za-z0-9_.-]", "_", user_id).strip("._-") or "default"
-    return settings.project_root / "data" / "portfolio" / "users" / safe_id / "portfolio.sqlite"
+    root = settings.portfolio_db_root if settings.portfolio_db_root.is_absolute() else settings.project_root / settings.portfolio_db_root
+    return root / "users" / safe_id / "portfolio.sqlite"
 
 
 def list_users() -> list[dict[str, object]]:
