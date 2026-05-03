@@ -17,6 +17,7 @@ yfinance
 copulas
 pillow
 cryptography
+libsql
 
 requests
 nbformat

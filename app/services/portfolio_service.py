@@ -25,6 +25,7 @@ from pipeline_portfolio.analysis import (
 from app.web import add_start_page_link
 from app.services.dataframe import frame_records
 from app.services.auth_service import AuthUser, portfolio_db_for_user
+from app.services import db_service
 
 
 DEFAULT_START_DATE = "2025-12-31"
@@ -110,7 +111,18 @@ def _prepare_portfolio_html(page: str, html: str, *, user: AuthUser | None = Non
 
 
 def _portfolio_db(user: AuthUser | None) -> str | None:
+    if user is not None and db_service.using_remote_app_db():
+        return None
     return str(portfolio_db_for_user(user)) if user is not None else None
+
+
+def _portfolio_user_id(user: AuthUser | None) -> str | None:
+    return user.id if user is not None and db_service.using_remote_app_db() else None
+
+
+def _require_user_for_remote_db(user: AuthUser | None) -> None:
+    if db_service.using_remote_app_db() and user is None:
+        raise PermissionError("Turso portfolio storage requires an authenticated user.")
 
 
 def _latest_db_date() -> str:
@@ -142,9 +154,11 @@ def dashboard_payload(
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> dict[str, object]:
+    _require_user_for_remote_db(user)
     date_range = resolve_range(start_date, end_date, lookback_days)
     dashboard = build_portfolio_dashboard(
         portfolio_db=_portfolio_db(user),
+        portfolio_user_id=_portfolio_user_id(user),
         lookback_days=date_range.lookback_days,
         start_date=date_range.start_date,
         end_date=date_range.end_date,
@@ -177,6 +191,7 @@ def render_page(
     message: str | None = None,
     error: str | None = None,
 ) -> str:
+    _require_user_for_remote_db(user)
     date_range = resolve_range(start_date, end_date, lookback_days)
     if page in HISTORICAL_PAGES:
         date_range = _latest_db_range(lookback_days)
@@ -186,6 +201,7 @@ def render_page(
         try:
             dashboard = build_portfolio_dashboard(
                 portfolio_db=_portfolio_db(user),
+                portfolio_user_id=_portfolio_user_id(user),
                 lookback_days=date_range.lookback_days,
                 start_date=date_range.start_date,
                 end_date=date_range.end_date,
@@ -214,6 +230,7 @@ def render_page(
             try:
                 optimization = build_portfolio_optimization(
                     portfolio_db=_portfolio_db(user),
+                    portfolio_user_id=_portfolio_user_id(user),
                     lookback_days=date_range.lookback_days,
                     start_date=date_range.start_date,
                     end_date=date_range.end_date,
@@ -237,6 +254,7 @@ def render_page(
 
 
 def create_trade(form: dict[str, str], *, user: AuthUser | None = None) -> None:
+    _require_user_for_remote_db(user)
     add_trade(
         trade_date=form.get("trade_date", ""),
         ticker=form.get("ticker", ""),
@@ -246,17 +264,21 @@ def create_trade(form: dict[str, str], *, user: AuthUser | None = None) -> None:
         fees=float(form.get("fees", "0") or 0),
         notes=form.get("notes", ""),
         db_path=_portfolio_db(user),
+        user_id=_portfolio_user_id(user),
     )
 
 
 def remove_trade(trade_id: int, *, user: AuthUser | None = None) -> None:
-    delete_trade(int(trade_id), db_path=_portfolio_db(user))
+    _require_user_for_remote_db(user)
+    delete_trade(int(trade_id), db_path=_portfolio_db(user), user_id=_portfolio_user_id(user))
 
 
 def virtual_trade_payload(form: dict[str, str], *, user: AuthUser | None = None) -> dict[str, object]:
+    _require_user_for_remote_db(user)
     date_range = _latest_db_range(int(form.get("lookback_days", DEFAULT_LOOKBACK_DAYS) or DEFAULT_LOOKBACK_DAYS))
     result = analyze_virtual_trade(
         portfolio_db=_portfolio_db(user),
+        portfolio_user_id=_portfolio_user_id(user),
         ticker=form.get("ticker", ""),
         side=form.get("side", ""),
         quantity=float(form.get("quantity", "0") or 0),
@@ -278,6 +300,7 @@ def virtual_trade_payload(form: dict[str, str], *, user: AuthUser | None = None)
 
 
 def render_virtual_trade(form: dict[str, str], *, user: AuthUser | None = None) -> str:
+    _require_user_for_remote_db(user)
     date_range = resolve_range(
         form.get("start_date"),
         form.get("end_date"),
@@ -289,6 +312,7 @@ def render_virtual_trade(form: dict[str, str], *, user: AuthUser | None = None) 
     try:
         dashboard = build_portfolio_dashboard(
             portfolio_db=_portfolio_db(user),
+            portfolio_user_id=_portfolio_user_id(user),
             lookback_days=date_range.lookback_days,
             start_date=date_range.start_date,
             end_date=date_range.end_date,
@@ -297,6 +321,7 @@ def render_virtual_trade(form: dict[str, str], *, user: AuthUser | None = None) 
         dashboard_error = f"{type(exc).__name__}: {exc}"
     result = analyze_virtual_trade(
         portfolio_db=_portfolio_db(user),
+        portfolio_user_id=_portfolio_user_id(user),
         ticker=form.get("ticker", ""),
         side=form.get("side", ""),
         quantity=float(form.get("quantity", "0") or 0),
