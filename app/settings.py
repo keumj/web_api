@@ -52,6 +52,8 @@ class Settings:
     auth_session_days: int = _env_int("KEUMJM_AUTH_SESSION_DAYS", 14)
     auth_db_path: Path = Path(os.getenv("KEUMJM_AUTH_DB_PATH", "data/users/auth.sqlite"))
     auth_secret_path: Path = Path(os.getenv("KEUMJM_AUTH_SECRET_PATH", "data/users/session_secret.key"))
+    bootstrap_admin_username: str = os.getenv("KEUMJM_BOOTSTRAP_ADMIN_USERNAME", "").strip()
+    bootstrap_admin_password: str = os.getenv("KEUMJM_BOOTSTRAP_ADMIN_PASSWORD", "")
     portfolio_db_root: Path = Path(os.getenv("KEUMJ_PORTFOLIO_DB_DIR", "data/portfolio"))
 
     def parsed_allowed_networks(self):
