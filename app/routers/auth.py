@@ -15,11 +15,11 @@ router = APIRouter()
 
 
 def _safe_next(value: str | None) -> str:
-    target = unquote(str(value or "").strip()) or "/portfolio/overview?intent=run"
+    target = unquote(str(value or "").strip()) or "/"
     if not target.startswith("/") or target.startswith("//"):
-        return "/portfolio/overview?intent=run"
+        return "/"
     if target.startswith(("/login", "/register", "/logout")):
-        return "/portfolio/overview?intent=run"
+        return "/"
     return target
 
 
