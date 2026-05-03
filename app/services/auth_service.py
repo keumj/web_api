@@ -77,6 +77,7 @@ def ensure_auth_db() -> Path:
         )
         _ensure_user_column(conn, "is_admin", "INTEGER NOT NULL DEFAULT 0")
         _ensure_user_column(conn, "is_active", "INTEGER NOT NULL DEFAULT 1")
+        _ensure_bootstrap_admin(conn)
         _ensure_at_least_one_admin(conn)
         conn.commit()
     return path
@@ -98,6 +99,27 @@ def _ensure_at_least_one_admin(conn: sqlite3.Connection) -> None:
     row = conn.execute("SELECT id FROM users ORDER BY created_at ASC, username ASC LIMIT 1").fetchone()
     if row:
         conn.execute("UPDATE users SET is_admin = 1, is_active = 1 WHERE id = ?", (str(row[0]),))
+
+
+def _ensure_bootstrap_admin(conn: sqlite3.Connection) -> None:
+    user_total = int(conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] or 0)
+    if user_total > 0:
+        return
+    if not settings.bootstrap_admin_username or not settings.bootstrap_admin_password:
+        return
+
+    clean_username = validate_username(settings.bootstrap_admin_username)
+    raw_password = validate_password(settings.bootstrap_admin_password)
+    user_id = secrets.token_urlsafe(18)
+    salt = secrets.token_bytes(16)
+    password_hash = _hash_password(raw_password, salt)
+    conn.execute(
+        """
+        INSERT INTO users(id, username, password_salt, password_hash, iterations, is_admin, is_active)
+        VALUES (?, ?, ?, ?, ?, 1, 1)
+        """,
+        (user_id, clean_username, _b64url_encode(salt), password_hash, PBKDF2_ITERATIONS),
+    )
 
 
 def user_count() -> int:
