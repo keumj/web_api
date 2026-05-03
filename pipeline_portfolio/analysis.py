@@ -255,7 +255,22 @@ def add_trade(
             )
             conn.commit()
             row = conn.execute("SELECT last_insert_rowid()").fetchone()
-            return int(row[0] or 0) if row else 0
+            trade_id = int(row[0] or 0) if row else 0
+            if trade_id <= 0:
+                check = conn.execute(
+                    """
+                    SELECT id
+                    FROM portfolio_trades
+                    WHERE user_id = ? AND trade_date = ? AND ticker = ? AND side = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (str(user_id), trade_ts, ticker_clean, side_clean),
+                ).fetchone()
+                trade_id = int(check[0] or 0) if check else 0
+            if trade_id <= 0:
+                raise RuntimeError("Remote portfolio trade insert did not return a row id.")
+            return trade_id
     target = ensure_portfolio_db(db_path)
     with sqlite3.connect(target) as conn:
         cur = conn.execute(
