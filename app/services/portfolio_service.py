@@ -71,10 +71,9 @@ def _prepare_portfolio_html(page: str, html: str, *, user: AuthUser | None = Non
             bar.append(label)
             bar.append(actions)
             wrap.insert(1, bar)
-    if user is None or not user.is_admin:
-        if soup is None:
-            soup = BeautifulSoup(html, "html.parser")
-        _remove_refresh_links(soup)
+    if soup is None:
+        soup = BeautifulSoup(html, "html.parser")
+    _remove_refresh_links(soup)
     if soup is not None:
         html = str(soup)
     if page not in HISTORICAL_PAGES:

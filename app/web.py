@@ -20,12 +20,10 @@ def shell(title: str, body: str, *, active: str = "portfolio", admin: bool = Fal
         "portfolio": "active" if active == "portfolio" else "",
         "stock": "active" if active == "stock" else "",
         "news": "active" if active == "news" else "",
-        "refresh": "active" if active == "refresh" else "",
         "admin": "active" if active == "admin" else "",
     }
     admin_link = f'<a class="{active_class["admin"]}" href="/admin/users">사용자 관리</a>' if admin else ""
     api_link = '<a href="/docs">API</a>' if admin else ""
-    refresh_link = f'<a class="{active_class["refresh"]}" href="/refresh">데이터 갱신</a>' if admin else ""
     return f"""<!doctype html>
 <html lang="ko">
 <head>
@@ -88,7 +86,6 @@ def shell(title: str, body: str, *, active: str = "portfolio", admin: bool = Fal
         <a class="{active_class["portfolio"]}" href="/portfolio/overview">포트폴리오</a>
         <a class="{active_class["stock"]}" href="/stock/forecast">종목 분석</a>
         <a class="{active_class["news"]}" href="/stock-news/overview">뉴스 분석</a>
-        {refresh_link}
         {admin_link}
         {api_link}
       </nav>
