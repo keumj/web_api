@@ -369,7 +369,7 @@ def _summary_metrics(dashboard: PortfolioDashboard | None) -> str:
         ("20일 수익률", _fmt(row.get("portfolio_return_20d_pct"), suffix="%")),
         ("60일 수익률", _fmt(row.get("portfolio_return_60d_pct"), suffix="%")),
         ("연율화 변동성", _fmt(row.get("portfolio_vol_annual_pct"), suffix="%")),
-        ("SP500 베타", _fmt(row.get("benchmark_beta"), 3)),
+        ("S&P 500 베타", _fmt(row.get("benchmark_beta"), 3)),
     ]
     html_parts = []
     for label, value in items:
@@ -430,7 +430,7 @@ def _layout(title: str, subtitle: str, active: str, ctx: _PageContext, body: str
     </head>
     <body>
       <div class="wrap">
-        {_page_head("Portfolio Lab | S&P500")}
+        {_page_head("Portfolio Lab | S&P 500")}
         {nav_html}
         <div class="sub">{html.escape(subtitle)}</div>
         {body}
@@ -547,7 +547,7 @@ def _overview_page(ctx: _PageContext) -> str:
     {_date_range_form("overview", ctx)}
     {_summary_metrics(dashboard)}
     <div class="card" style="margin-top: 12px;">
-      <h3 style="margin-top:0;">섹터 배분 비교 (Portfolio vs S&P500)</h3>
+      <h3 style="margin-top:0;">섹터 배분 비교 (Portfolio vs S&P 500)</h3>
       <div class="grid-2">
         <div class="chart-card">
           {chart1_html}
@@ -593,7 +593,7 @@ def _attribution_page(ctx: _PageContext) -> str:
     {_message_block(ctx)}
     {_date_range_form("attribution", ctx)}
     <div class="card" style="margin-bottom: 12px;">
-      <h3 style="margin-top:0;">누적 수익률 추이 (vs S&P500)</h3>
+      <h3 style="margin-top:0;">누적 수익률 추이 (vs S&P 500)</h3>
       {f'<img src="data:image/png;base64,{dashboard.cumulative_chart}" class="chart-img" alt="Cumulative Return Chart" />' if dashboard and dashboard.cumulative_chart else "<p class='hint'>차트 데이터를 불러올 수 없습니다.</p>"}
     </div>
     <div class="grid-2" style="margin-bottom: 12px;">
@@ -621,12 +621,12 @@ def _attribution_page(ctx: _PageContext) -> str:
       </div>
     </div>
     <div class="card" style="margin-top:12px;">
-      <h3>SP500 대비 종목별 상대 기여</h3>
+      <h3>S&P 500 대비 종목별 상대 기여</h3>
       {_safe_table(dashboard.stock_attribution if dashboard else pd.DataFrame())}
     </div>
     <div class="grid-2">
       <div class="card">
-        <h3>SP500 대비 섹터 Attribution</h3>
+        <h3>S&P 500 대비 섹터 Attribution</h3>
         {_safe_table(dashboard.attribution if dashboard else pd.DataFrame())}
       </div>
       <div class="card">
@@ -635,7 +635,7 @@ def _attribution_page(ctx: _PageContext) -> str:
       </div>
     </div>
     """
-    return _layout("Portfolio Lab | 성과 Attribution", "보유 종목 절대 성과를 먼저 보고, 그 다음 SP500 대비 상대성과를 이어서 봅니다. WTD, MTD, YTD는 선택 기간과 별개로 항상 함께 계산됩니다.", "attribution", ctx, body)
+    return _layout("Portfolio Lab | 성과 Attribution", "보유 종목 절대 성과를 먼저 보고, 그 다음 S&P 500 대비 상대성과를 이어서 봅니다. WTD, MTD, YTD는 선택 기간과 별개로 항상 함께 계산됩니다.", "attribution", ctx, body)
 
 
 def _risk_page(ctx: _PageContext) -> str:
@@ -657,7 +657,7 @@ def _risk_page(ctx: _PageContext) -> str:
         {_safe_table(dashboard.risk_summary if dashboard else pd.DataFrame())}
       </div>
       <div class="card" style="margin-top:12px;">
-        <h3 style="margin-top:0;">SP500 대비 상대 리스크</h3>
+        <h3 style="margin-top:0;">S&P 500 대비 상대 리스크</h3>
         {_safe_table(dashboard.relative_risk_summary if dashboard else pd.DataFrame())}
       </div>
       <div class="card">
@@ -680,7 +680,7 @@ def _risk_page(ctx: _PageContext) -> str:
       </div>
     </div>
     """
-    return _layout("Portfolio Lab | 리스크", "절대 리스크와 함께 SP500 대비 tracking error, active risk, 스타일 노출을 함께 봅니다.", "risk", ctx, body)
+    return _layout("Portfolio Lab | 리스크", "절대 리스크와 함께 S&P 500 대비 tracking error, active risk, 스타일 노출을 함께 봅니다.", "risk", ctx, body)
 
 
 def _scoring_page(ctx: _PageContext) -> str:
@@ -745,8 +745,8 @@ def _scoring_page(ctx: _PageContext) -> str:
       </div>
     </div>
     <div class="card" style="margin-top: 12px; border-left: 5px solid var(--ok-line);">
-      <h2>신규 추천 종목 (미보유 S&P500 상위 10)</h2>
-      <p class="hint">현재 포트폴리오에 보유하지 않은 S&P500 종목 중 통합 스코어가 가장 높은 종목들입니다. 새로운 투자 기회 발굴에 참고하십시오.</p>
+      <h2>신규 추천 종목 (미보유 S&P 500 상위 10)</h2>
+      <p class="hint">현재 포트폴리오에 보유하지 않은 S&P 500 종목 중 통합 스코어가 가장 높은 종목들입니다. 새로운 투자 기회 발굴에 참고하십시오.</p>
       {_safe_table(recs_linked, escape=False)}
     </div>
     <div class="card" style="margin-top: 12px;">
@@ -835,7 +835,7 @@ def _optimization_page(ctx: _PageContext) -> str:
     {_date_range_form("optimization", ctx)}
     <div class="card">
       <h2 style="margin-top:0;">포트폴리오 최적화</h2>
-      <p class="hint">S&P500 복제, 공격형, 방어형 포트폴리오를 현재 보유 종목과 비교하면서 제약조건을 반영해 재구성합니다.</p>
+      <p class="hint">S&P 500 복제, 공격형, 방어형 포트폴리오를 현재 보유 종목과 비교하면서 제약조건을 반영해 재구성합니다.</p>
       <form method="get" action="/optimization">
         <div class="form-grid">
           <input type="hidden" name="intent" value="run">
@@ -852,7 +852,7 @@ def _optimization_page(ctx: _PageContext) -> str:
     </div>
     <div class="grid-3">
       <div class="card">
-        <h3>S&P500 복제</h3>
+        <h3>S&P 500 복제</h3>
         <p class="hint" style="margin-bottom: 12px;">
           <strong>목적:</strong> 시장 평균 수익률 추종 및 추적 오차 최소화<br>
           <strong>방법:</strong> 유니버스 내에서 섹터 비중과 시가총액 가중치를 S&P 500 지수와 유사하게 매칭하여 재구성합니다.<br>
@@ -890,13 +890,13 @@ def _optimization_page(ctx: _PageContext) -> str:
       {_safe_table(optimization.diagnostics if optimization else pd.DataFrame())}
     </div>
     """
-    return _layout("Portfolio Lab | 최적화", "포트폴리오를 통한 SP500 복제와 성향별 구성 추천", "optimization", ctx, body)
+    return _layout("Portfolio Lab | 최적화", "포트폴리오를 통한 S&P 500 복제와 성향별 구성 추천", "optimization", ctx, body)
 
 _REFRESH_JOB_DEFS: list[dict[str, str]] = [
     { # Portfolio's own stock refresh
         "job_id": "stock",
-        "label": "SP500 가격/시총",
-        "description": "S&P500 가격 패널, 시가총액 CSV, shared SQLite 가격 테이블을 갱신합니다.",
+        "label": "S&P 500 가격/시총",
+        "description": "S&P 500 가격 패널, 시가총액 CSV, shared SQLite 가격 테이블을 갱신합니다.",
         "module": "pipeline_common.refresh_sp500_shared_prices",
         "button_label": "가격/시총 갱신",
     },
@@ -912,7 +912,7 @@ _REFRESH_JOB_DEFS: list[dict[str, str]] = [
         # Portfolio's own news refresh
         "job_id": "news",
         "label": "뉴스",
-        "description": "S&P500 구성 종목 뉴스 기사와 뉴스 분석 대기열을 shared SQLite에 적재합니다.",
+        "description": "S&P 500 구성 종목 뉴스 기사와 뉴스 분석 대기열을 shared SQLite에 적재합니다.",
         "module": "pipeline_common.refresh_sp500_news",
         "button_label": "뉴스 갱신",
     },
@@ -922,8 +922,8 @@ _REFRESH_JOB_DEFS: list[dict[str, str]] = [
 _REFRESH_JOB_DEFS.extend([
     {
         "job_id": "stock_lab_stock",
-        "label": "Stock Lab: SP500 가격/시총",
-        "description": "Stock Analysis Lab에서 사용하는 S&P500 가격 및 시가총액 데이터를 갱신합니다.",
+        "label": "Stock Lab: S&P 500 가격/시총",
+        "description": "Stock Analysis Lab에서 사용하는 S&P 500 가격 및 시가총액 데이터를 갱신합니다.",
         "module": "pipeline_stock.cli", # This module has the refresh command
         "command_args": ["refresh"],
         "button_label": "Stock Lab 가격 갱신",

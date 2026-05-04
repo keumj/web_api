@@ -53,7 +53,7 @@ matplotlib.use("Agg")
 import matplotlib.dates as mdates  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 
-_APP_TITLE = "Stock Analysis Lab | S&P500"
+_APP_TITLE = "Stock Analysis Lab | S&P 500"
 
 @dataclass
 class _RunContext:
@@ -888,11 +888,11 @@ def _run_decision_once(
             continue
         if ticker_return > sector_return and ticker_return > market_return:
             relative_score += weight
-            bullish.append(f"{label} ?섏씡瑜좎씠 ?뱁꽣? S&P500??紐⑤몢 ?곹쉶???곷?媛뺣룄???고샇?곸엯?덈떎. 醫낅ぉ {_format_pct(ticker_return)}, ?뱁꽣 {_format_pct(sector_return)}, S&P500 {_format_pct(market_return)}?낅땲??")
+            bullish.append(f"{label} ?섏씡瑜좎씠 ?뱁꽣? S&P 500??紐⑤몢 ?곹쉶???곷?媛뺣룄???고샇?곸엯?덈떎. 醫낅ぉ {_format_pct(ticker_return)}, ?뱁꽣 {_format_pct(sector_return)}, S&P 500 {_format_pct(market_return)}?낅땲??")
             relative_details.append(f"{label}_outperform")
         elif ticker_return < sector_return and ticker_return < market_return:
             relative_score -= weight
-            bearish.append(f"{label} ?섏씡瑜좎씠 ?뱁꽣? S&P500??紐⑤몢 諛묐룎???곷?媛뺣룄???쏀빀?덈떎. 醫낅ぉ {_format_pct(ticker_return)}, ?뱁꽣 {_format_pct(sector_return)}, S&P500 {_format_pct(market_return)}?낅땲??")
+            bearish.append(f"{label} ?섏씡瑜좎씠 ?뱁꽣? S&P 500??紐⑤몢 諛묐룎???곷?媛뺣룄???쏀빀?덈떎. 醫낅ぉ {_format_pct(ticker_return)}, ?뱁꽣 {_format_pct(sector_return)}, S&P 500 {_format_pct(market_return)}?낅땲??")
             relative_details.append(f"{label}_underperform")
     if returns_ctx.sector_rank_ytd is not None and returns_ctx.sector_count > 0:
         sector_pct = returns_ctx.sector_rank_ytd / max(1, returns_ctx.sector_count)
@@ -908,11 +908,11 @@ def _run_decision_once(
         market_pct = returns_ctx.market_rank_ytd / max(1, returns_ctx.market_count)
         if market_pct <= 0.10:
             relative_score += 0.3
-            bullish.append(f"S&P500 ?꾩껜?먯꽌??YTD ?곸쐞沅?{returns_ctx.market_rank_ytd}/{returns_ctx.market_count})?대씪 ?쒖옣 二쇰룄二??깃꺽???덉뒿?덈떎.")
+            bullish.append(f"S&P 500 ?꾩껜?먯꽌??YTD ?곸쐞沅?{returns_ctx.market_rank_ytd}/{returns_ctx.market_count})?대씪 ?쒖옣 二쇰룄二??깃꺽???덉뒿?덈떎.")
             relative_details.append("market_top_decile")
         elif market_pct >= 0.90:
             relative_score -= 0.3
-            bearish.append(f"S&P500 ?꾩껜?먯꽌??YTD ?섏쐞沅?{returns_ctx.market_rank_ytd}/{returns_ctx.market_count})?대씪 ?쎌꽭 ?먮쫫???쒕졆?⑸땲??")
+            bearish.append(f"S&P 500 ?꾩껜?먯꽌??YTD ?섏쐞沅?{returns_ctx.market_rank_ytd}/{returns_ctx.market_count})?대씪 ?쎌꽭 ?먮쫫???쒕졆?⑸땲??")
             relative_details.append("market_bottom_decile")
     relative_score = _clip_score(relative_score)
     score_rows.append({"Category": "Relative Strength", "Score": relative_score, "Detail": ", ".join(relative_details) or "-"})
@@ -941,11 +941,11 @@ def _run_decision_once(
     if risk_ctx.beta_market_1y is not None:
         if risk_ctx.beta_market_1y >= 1.2:
             risk_score -= 0.4
-            bearish.append(f"S&P500 ?鍮?踰좏?媛 {risk_ctx.beta_market_1y:,.2f}濡??믪븘 ?쒖옣 湲됰씫 ??異⑷꺽????而ㅼ쭏 ???덉뒿?덈떎.")
+            bearish.append(f"S&P 500 ?鍮?踰좏?媛 {risk_ctx.beta_market_1y:,.2f}濡??믪븘 ?쒖옣 湲됰씫 ??異⑷꺽????而ㅼ쭏 ???덉뒿?덈떎.")
             risk_details.append("high_beta")
         elif risk_ctx.beta_market_1y <= 0.8:
             risk_score += 0.4
-            bullish.append(f"S&P500 ?鍮?踰좏?媛 {risk_ctx.beta_market_1y:,.2f}濡???븘 ?ъ???愿由ш? ?곷??곸쑝濡??섏썡???몄엯?덈떎.")
+            bullish.append(f"S&P 500 ?鍮?踰좏?媛 {risk_ctx.beta_market_1y:,.2f}濡???븘 ?ъ???愿由ш? ?곷??곸쑝濡??섏썡???몄엯?덈떎.")
             risk_details.append("low_beta")
     if risk_ctx.var_95_1d is not None:
         if risk_ctx.var_95_1d >= 0.035:
@@ -4269,7 +4269,7 @@ def _html_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P500 - 二쇨? ?덉륫</title>
+  <title>Stock Analysis Lab | S&P 500 - 二쇨? ?덉륫</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -4419,7 +4419,7 @@ def _html_walk_forward_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P500 - ?뚰겕?ъ썙??寃利?/title>
+  <title>Stock Analysis Lab | S&P 500 - ?뚰겕?ъ썙??寃利?/title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -4536,7 +4536,7 @@ def _html_financial_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P500 - ?щТ?쒗몴쨌諛몃쪟?먯씠??/title>
+  <title>Stock Analysis Lab | S&P 500 - ?щТ?쒗몴쨌諛몃쪟?먯씠??/title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -4648,7 +4648,7 @@ def _html_technical_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P500 - 湲곗닠??遺꾩꽍</title>
+  <title>Stock Analysis Lab | S&P 500 - 湲곗닠??遺꾩꽍</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -4776,7 +4776,7 @@ def _html_returns_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P500 - ?섏씡瑜?鍮꾧탳</title>
+  <title>Stock Analysis Lab | S&P 500 - ?섏씡瑜?鍮꾧탳</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -4896,7 +4896,7 @@ def _html_risk_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P500 - 由ъ뒪????쒕낫??/title>
+  <title>Stock Analysis Lab | S&P 500 - 由ъ뒪????쒕낫??/title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -5023,7 +5023,7 @@ def _html_factor_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P500 - ?⑺꽣쨌?덉쭚 ??/title>
+  <title>Stock Analysis Lab | S&P 500 - ?⑺꽣쨌?덉쭚 ??/title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -5131,7 +5131,7 @@ def _html_decision_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P500 - ?섏궗寃곗젙 ??쒕낫??/title>
+  <title>Stock Analysis Lab | S&P 500 - ?섏궗寃곗젙 ??쒕낫??/title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -5410,11 +5410,11 @@ def _html_refresh_history_page(is_sub_page: bool = False) -> str:
               <th>Status</th>
               <th>Started</th>
               <th>Finished</th>
-              <th>SP500 Old Max Date</th>
-              <th>SP500 New Max Date</th>
+              <th>S&P 500 Old Max Date</th>
+              <th>S&P 500 New Max Date</th>
               <th>Financial SQLite Added</th>
-              <th>SP500 SQLite Added</th>
-              <th>SP500 MCap Updates</th>
+              <th>S&P 500 SQLite Added</th>
+              <th>S&P 500 MCap Updates</th>
               <th>Error</th>
             </tr>
           </thead>
