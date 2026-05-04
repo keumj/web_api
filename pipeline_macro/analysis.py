@@ -9,9 +9,8 @@ import pandas as pd
 
 from pipeline_common.notebook_data import (
     fetch_sp500_close_prices,
-    load_local_yield_df,
+    load_yield_curve_df,
     load_sp500_components,
-    make_fallback_yield_df,
     make_gbm_series,
 )
 
@@ -36,6 +35,7 @@ class MacroDashboard:
     sources: pd.DataFrame
     market_series: pd.DataFrame
     rate_series: pd.DataFrame
+    yield_curve_series: pd.DataFrame
     risk_series: pd.DataFrame
     commodity_series: pd.DataFrame
 
@@ -61,6 +61,73 @@ def _change(series: pd.Series, window: int) -> float:
     if len(clean) <= window:
         return np.nan
     return float(clean.iloc[-1] - clean.iloc[-(window + 1)])
+
+
+def _change_bp(series: pd.Series, window: int) -> float:
+    change = _change(series, window)
+    return change * 100.0 if np.isfinite(change) else np.nan
+
+
+def _fmt_level(value: float, suffix: str = "%") -> str:
+    return "-" if not np.isfinite(value) else f"{value:.2f}{suffix}"
+
+
+def _fmt_bp(value: float) -> str:
+    return "-" if not np.isfinite(value) else f"{value:+.0f}bp"
+
+
+def _rate_move_comment(change_20d: float, change_60d: float) -> str:
+    if (np.isfinite(change_20d) and change_20d >= 15.0) or (np.isfinite(change_60d) and change_60d >= 30.0):
+        return "최근 금리 상승 속도가 빨라 할인율 부담이 커지는 구간입니다."
+    if (np.isfinite(change_20d) and change_20d <= -15.0) or (np.isfinite(change_60d) and change_60d <= -30.0):
+        return "최근 금리가 내려가며 밸류에이션 부담은 완화되는 구간입니다."
+    return "최근 변화폭은 크지 않아 레벨 자체와 커브 형태를 더 중시합니다."
+
+
+def _spread_state(value: float) -> str:
+    bp = value * 100.0 if np.isfinite(value) else np.nan
+    if not np.isfinite(bp):
+        return "판단 보류"
+    if bp <= -75.0:
+        return "깊은 역전"
+    if bp < 0.0:
+        return "역전"
+    if bp < 50.0:
+        return "낮은 양의 스프레드"
+    return "가파른 정상 커브"
+
+
+def _stock_rate_comment(name: str, level: float, change_20d: float, change_60d: float, *, dgs2_level: float, dgs10_level: float) -> str:
+    move = _rate_move_comment(change_20d, change_60d)
+    curve_note = "2Y가 10Y보다 높아 정책 부담이 장기 성장 기대를 누르는 역전 환경입니다." if dgs2_level > dgs10_level else "10Y가 2Y보다 높아 커브는 정상 형태에 가깝습니다."
+    if name == "2Y":
+        level_note = "정책 부담이 높은 편" if level >= 4.5 else "정책 부담이 중립 이하"
+        decision = "주식은 공격적 베타보다 퀄리티, 현금흐름, 방어적 성장주를 우선합니다." if level >= 4.5 or dgs2_level > dgs10_level else "성장주와 장기 듀레이션 종목의 반등 여지를 더 열어둘 수 있습니다."
+        return f"현재 2Y는 {_fmt_level(level)}로 {level_note}입니다. 20D {_fmt_bp(change_20d)}, 60D {_fmt_bp(change_60d)}. {move} {curve_note} {decision}"
+    if name == "10Y":
+        level_note = "주식 할인율 부담이 높은 편" if level >= 4.25 else "할인율 부담이 과도하게 높지는 않은 편"
+        decision = "10Y가 오르는 동안에는 고PER 성장주 비중을 서두르기보다 가치주, 금융, 에너지, 현금흐름 우량주를 상대적으로 선호합니다." if level >= 4.25 or change_20d > 10.0 else "10Y가 안정되면 성장주와 배당주의 멀티플 회복 가능성을 봅니다."
+        return f"현재 10Y는 {_fmt_level(level)}로 {level_note}입니다. 20D {_fmt_bp(change_20d)}, 60D {_fmt_bp(change_60d)}. {move} {decision}"
+    level_note = "초장기 금리 부담이 높은 편" if level >= 4.5 else "초장기 금리는 중립권"
+    decision = "30Y가 높거나 상승하면 장기채 성격의 배당주, REITs, 유틸리티에는 부담이고, 인플레 방어력이 있는 업종을 함께 봅니다." if level >= 4.5 or change_20d > 10.0 else "30Y 안정은 장기 듀레이션 주식과 방어적 배당주의 상대 매력을 높입니다."
+    return f"현재 30Y는 {_fmt_level(level)}로 {level_note}입니다. 20D {_fmt_bp(change_20d)}, 60D {_fmt_bp(change_60d)}. {move} {decision}"
+
+
+def _stock_spread_comment(name: str, level: float, change_20d: float, change_60d: float) -> str:
+    current_bp = level * 100.0 if np.isfinite(level) else np.nan
+    state = _spread_state(level)
+    widening = (np.isfinite(change_20d) and change_20d >= 15.0) or (np.isfinite(change_60d) and change_60d >= 30.0)
+    flattening = (np.isfinite(change_20d) and change_20d <= -15.0) or (np.isfinite(change_60d) and change_60d <= -30.0)
+    if name == "10Y-3M":
+        decision = "주식은 경기민감주보다 퀄리티, 필수소비, 헬스케어, 현금비중을 우선합니다." if current_bp < 0.0 else "침체 신호가 완화되는 쪽이라 금융과 경기민감주를 점진적으로 재검토할 수 있습니다."
+    elif name == "10Y-2Y":
+        decision = "역전 상태에서는 지수 베타 확대를 서두르기보다 방어와 우량 성장주 중심이 낫습니다." if current_bp < 0.0 else "정상화가 진행되면 은행, 산업재, 가치주 쪽 로테이션 가능성을 봅니다."
+    elif name == "5Y-2Y":
+        decision = "중기 구간도 눌려 있어 정책 부담이 이어지는 그림입니다. 중소형 경기민감주보다 이익 안정성이 높은 종목을 우선합니다." if current_bp < 0.0 else "중기 성장 기대가 살아나는 쪽이라 경기 회복 민감 업종을 일부 열어둘 수 있습니다."
+    else:
+        decision = "초장기 프리미엄 확대는 장기금리 민감 업종에 부담입니다." if widening and current_bp > 0.0 else "초장기 스프레드 안정은 배당주, 유틸리티, REITs 부담 완화로 해석합니다."
+    direction = "스프레드가 확대 중이라 커브 정상화 쪽 신호가 있습니다." if widening else "스프레드가 축소 중이라 커브 플래트닝 압력이 있습니다." if flattening else "최근 스프레드 변화는 제한적입니다."
+    return f"현재 {name}는 {_fmt_bp(current_bp)}로 {state} 상태입니다. 20D {_fmt_bp(change_20d)}, 60D {_fmt_bp(change_60d)}. {direction} {decision}"
 
 
 def _zscore(series: pd.Series, window: int = 252) -> float:
@@ -189,14 +256,8 @@ def build_macro_dashboard(
     lookback = max(int(lookback_days), 126)
     tail_n = max(lookback + 60, 260)
 
-    yield_ids = ["DGS2", "DGS10", "DGS30"]
-    local_yields, local_yield_source = load_local_yield_df(yield_ids, start=start)
-    if local_yields is not None and not local_yields.empty:
-        yields = local_yields
-        yield_source = local_yield_source or "local_csv"
-    else:
-        yields = make_fallback_yield_df(yield_ids, start=start)
-        yield_source = "fallback"
+    yield_ids = ["DGS1MO", "DGS3MO", "DGS6MO", "DGS1", "DGS2", "DGS3", "DGS5", "DGS7", "DGS10", "DGS20", "DGS30"]
+    yields, yield_source = load_yield_curve_df(yield_ids, start=start)
     yields = yields.tail(tail_n).copy()
 
     components, components_source = load_sp500_components(max_symbols=120)
@@ -259,9 +320,13 @@ def build_macro_dashboard(
     dxy = dxy.tail(tail_n)
     commodity_series = pd.concat([wti, gold, silver, copper], axis=1).tail(tail_n).dropna(how="all")
     dgs2 = yields["DGS2"] if "DGS2" in yields else pd.Series(dtype=float)
+    dgs3m = yields["DGS3MO"] if "DGS3MO" in yields else pd.Series(dtype=float)
+    dgs5 = yields["DGS5"] if "DGS5" in yields else pd.Series(dtype=float)
     dgs10 = yields["DGS10"] if "DGS10" in yields else pd.Series(dtype=float)
     dgs30 = yields["DGS30"] if "DGS30" in yields else pd.Series(dtype=float)
+    curve_10y_3m = (dgs10 - dgs3m).dropna().rename("10Y-3M")
     curve_10y_2y = (dgs10 - dgs2).dropna().rename("10Y-2Y")
+    curve_5y_2y = (dgs5 - dgs2).dropna().rename("5Y-2Y")
     curve_30y_10y = (dgs30 - dgs10).dropna().rename("30Y-10Y")
 
     latest_dates = [idx.max() for idx in [yields.index, prices.index, dxy.index, spx.index, commodity_series.index] if len(idx) > 0]
@@ -327,10 +392,13 @@ def build_macro_dashboard(
     )
     rates = pd.DataFrame(
         [
-            {"구간": "2Y", "현재 금리": _latest_value(dgs2), "20D 변화": _change(dgs2, 20), "60D 변화": _change(dgs2, 60), "해석": "정책금리 기대에 민감"},
-            {"구간": "10Y", "현재 금리": _latest_value(dgs10), "20D 변화": _change(dgs10, 20), "60D 변화": _change(dgs10, 60), "해석": "성장/물가 기대와 할인율"},
-            {"구간": "30Y", "현재 금리": _latest_value(dgs30), "20D 변화": _change(dgs30, 20), "60D 변화": _change(dgs30, 60), "해석": "장기 성장과 기간 프리미엄"},
-            {"구간": "10Y-2Y", "현재 금리": _latest_value(curve_10y_2y), "20D 변화": _change(curve_10y_2y, 20), "60D 변화": _change(curve_10y_2y, 60), "해석": "커브 정상화/역전"},
+            {"구간": "2Y", "현재 금리": _latest_value(dgs2), "20D 변화(bp)": _change_bp(dgs2, 20), "60D 변화(bp)": _change_bp(dgs2, 60), "해석": _stock_rate_comment("2Y", _latest_value(dgs2), _change_bp(dgs2, 20), _change_bp(dgs2, 60), dgs2_level=_latest_value(dgs2), dgs10_level=_latest_value(dgs10))},
+            {"구간": "10Y", "현재 금리": _latest_value(dgs10), "20D 변화(bp)": _change_bp(dgs10, 20), "60D 변화(bp)": _change_bp(dgs10, 60), "해석": _stock_rate_comment("10Y", _latest_value(dgs10), _change_bp(dgs10, 20), _change_bp(dgs10, 60), dgs2_level=_latest_value(dgs2), dgs10_level=_latest_value(dgs10))},
+            {"구간": "30Y", "현재 금리": _latest_value(dgs30), "20D 변화(bp)": _change_bp(dgs30, 20), "60D 변화(bp)": _change_bp(dgs30, 60), "해석": _stock_rate_comment("30Y", _latest_value(dgs30), _change_bp(dgs30, 20), _change_bp(dgs30, 60), dgs2_level=_latest_value(dgs2), dgs10_level=_latest_value(dgs10))},
+            {"구간": "10Y-3M", "현재 금리": _latest_value(curve_10y_3m), "20D 변화(bp)": _change_bp(curve_10y_3m, 20), "60D 변화(bp)": _change_bp(curve_10y_3m, 60), "해석": _stock_spread_comment("10Y-3M", _latest_value(curve_10y_3m), _change_bp(curve_10y_3m, 20), _change_bp(curve_10y_3m, 60))},
+            {"구간": "10Y-2Y", "현재 금리": _latest_value(curve_10y_2y), "20D 변화(bp)": _change_bp(curve_10y_2y, 20), "60D 변화(bp)": _change_bp(curve_10y_2y, 60), "해석": _stock_spread_comment("10Y-2Y", _latest_value(curve_10y_2y), _change_bp(curve_10y_2y, 20), _change_bp(curve_10y_2y, 60))},
+            {"구간": "5Y-2Y", "현재 금리": _latest_value(curve_5y_2y), "20D 변화(bp)": _change_bp(curve_5y_2y, 20), "60D 변화(bp)": _change_bp(curve_5y_2y, 60), "해석": _stock_spread_comment("5Y-2Y", _latest_value(curve_5y_2y), _change_bp(curve_5y_2y, 20), _change_bp(curve_5y_2y, 60))},
+            {"구간": "30Y-10Y", "현재 금리": _latest_value(curve_30y_10y), "20D 변화(bp)": _change_bp(curve_30y_10y, 20), "60D 변화(bp)": _change_bp(curve_30y_10y, 60), "해석": _stock_spread_comment("30Y-10Y", _latest_value(curve_30y_10y), _change_bp(curve_30y_10y, 20), _change_bp(curve_30y_10y, 60))},
         ]
     )
     risk_assets = pd.DataFrame(
@@ -375,7 +443,8 @@ def build_macro_dashboard(
         ]
     )
     market_series = pd.concat([spx.rename("S&P 500"), dxy.rename("DXY"), commodity_series["Gold"].rename("Gold")], axis=1).dropna(how="all")
-    rate_series = pd.concat([dgs2.rename("2Y"), dgs10.rename("10Y"), dgs30.rename("30Y"), curve_10y_2y, curve_30y_10y], axis=1).dropna(how="all")
+    yield_curve_series = yields[yield_ids].dropna(how="all")
+    rate_series = pd.concat([dgs2.rename("2Y"), dgs10.rename("10Y"), dgs30.rename("30Y"), curve_10y_3m, curve_10y_2y, curve_5y_2y, curve_30y_10y], axis=1).dropna(how="all")
     risk_series = pd.concat([spx.rename("S&P 500"), drawdown, rolling_vol], axis=1).dropna(how="all")
 
     return MacroDashboard(
@@ -393,6 +462,7 @@ def build_macro_dashboard(
         sources=sources,
         market_series=market_series,
         rate_series=rate_series,
+        yield_curve_series=yield_curve_series,
         risk_series=risk_series,
         commodity_series=commodity_series,
     )

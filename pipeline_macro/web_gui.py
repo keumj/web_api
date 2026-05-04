@@ -11,7 +11,14 @@ import pandas as pd
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
+from pipeline_common.notebook_models import select_quarter_snapshots
+
 from .analysis import MacroDashboard, build_macro_dashboard
+
+
+YIELD_CURVE_SERIES_IDS = ["DGS1MO", "DGS3MO", "DGS6MO", "DGS1", "DGS2", "DGS3", "DGS5", "DGS7", "DGS10", "DGS20", "DGS30"]
+YIELD_CURVE_MATURITIES = np.array([0.08, 0.25, 0.5, 1, 2, 3, 5, 7, 10, 20, 30], dtype=float)
+YIELD_CURVE_LABELS = ["1M", "3M", "6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"]
 
 
 PAGES: dict[str, tuple[str, str]] = {
@@ -113,6 +120,28 @@ def _bar_chart(labels: list[str], values: list[float], title: str, *, ylabel: st
     return _chart_to_base64(fig)
 
 
+def _yield_curve_chart(frame: pd.DataFrame, title: str) -> str:
+    data = frame.reindex(columns=YIELD_CURVE_SERIES_IDS).apply(pd.to_numeric, errors="coerce").dropna(how="all")
+    fig, ax = plt.subplots(figsize=(7.2, 3.3))
+    clean = data.ffill().dropna()
+    if clean.empty:
+        ax.text(0.5, 0.5, "No data", ha="center", va="center")
+    else:
+        selected = select_quarter_snapshots(clean, n_quarters=5)
+        for d in selected.index:
+            values = selected.loc[d].values.astype(float)
+            ax.plot(YIELD_CURVE_MATURITIES, values, marker="o", linewidth=1.7, markersize=3.5, label=d.strftime("%Y-%m-%d"))
+        ax.legend(loc="best", fontsize=7, frameon=False, ncol=2)
+    ax.set_title(title, fontsize=11, loc="left")
+    ax.set_xlabel("Maturity")
+    ax.set_ylabel("Yield (%)")
+    ax.set_xticks(YIELD_CURVE_MATURITIES)
+    ax.set_xticklabels(YIELD_CURVE_LABELS, rotation=0, fontsize=8)
+    ax.grid(True, alpha=0.25)
+    ax.tick_params(axis="y", labelsize=8)
+    return _chart_to_base64(fig)
+
+
 def _score_bars(scores: pd.DataFrame) -> str:
     rows: list[str] = []
     for _, row in scores.iterrows():
@@ -173,8 +202,8 @@ def _page_charts(page: str, dashboard: MacroDashboard) -> str:
         ]
     elif page == "rates":
         charts = [
-            ("미국 국채 금리", _line_chart(dashboard.rate_series[["2Y", "10Y", "30Y"]], "Treasury Yield Curve Points", ylabel="%")),
-            ("장단기 스프레드", _line_chart(dashboard.rate_series[["10Y-2Y", "30Y-10Y"]], "Yield Curve Spreads", ylabel="%p")),
+            ("미국 국채 일드커브", _yield_curve_chart(dashboard.yield_curve_series, "Treasury Yield Curves (Quarter-end + Latest)")),
+            ("만기간 스프레드", _line_chart(dashboard.rate_series[["10Y-3M", "10Y-2Y", "5Y-2Y", "30Y-10Y"]], "Maturity Spreads", ylabel="%p")),
         ]
     elif page == "risk":
         risk = dashboard.risk_series
@@ -278,8 +307,9 @@ def render_body(page: str, *, start_date: str | None = None, lookback_days: int 
     return f"""
     <style>
       .macro-nav {{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }}
-      .macro-nav a {{ text-decoration:none; color:var(--brand); border:1px solid var(--line); background:#fff; border-radius:8px; padding:7px 11px; font-size:13px; }}
+      .macro-nav a {{ text-decoration:none; color:var(--brand); border:1px solid var(--line); background:#fff; border-radius:999px; padding:7px 12px; font-size:13px; }}
       .macro-nav a.active {{ background:var(--brand); color:#fff; border-color:var(--brand); }}
+      .service-main > .macro-nav:first-of-type {{ display:none; }}
       .macro-hero {{ display:flex; justify-content:space-between; gap:16px; align-items:flex-start; background:#fff; border:1px solid var(--line); border-radius:8px; padding:18px; margin-bottom:12px; }}
       .macro-hero h1 {{ margin:4px 0 8px; font-size:26px; letter-spacing:0; }}
       .macro-hero p {{ margin:0; color:var(--muted); line-height:1.5; }}
@@ -306,6 +336,7 @@ def render_body(page: str, *, start_date: str | None = None, lookback_days: int 
         .macro-score-row {{ grid-template-columns:120px 1fr 44px; }}
       }}
     </style>
+    <div class="macro-nav"><a href="/">기본페이지로 돌아가기</a></div>
     {_macro_nav(active)}
     {page_html}
     """

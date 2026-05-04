@@ -149,8 +149,8 @@ def _base_css() -> str:
     .notice.ok { background: var(--ok-bg); border: 1px solid var(--ok-line); }
     .notice.err { background: var(--err-bg); border: 1px solid var(--err-line); }
     .table-wrap { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .data-table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 12px; }
-    .data-table th, .data-table td { border: 1px solid var(--line); padding: 6px; text-align: left; vertical-align: top; white-space: nowrap; }
+    .data-table { width: 100%; min-width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.45; }
+    .data-table th, .data-table td { border: 1px solid var(--line); padding: 8px; text-align: left; vertical-align: top; white-space: normal; overflow-wrap: anywhere; word-break: normal; }
     .small { font-size: 12px; color: var(--muted); }
     .split-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .pane { min-width: 0; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }

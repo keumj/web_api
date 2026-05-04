@@ -184,8 +184,8 @@ def _base_css(is_sub_page: bool = False) -> str:
     .tables { margin-top: 12px; display: grid; grid-template-columns: 1fr; gap: 10px; }
     .table-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .table-wrap { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; max-height: 500px; overflow-y: auto; border-bottom: 1px solid var(--line); -webkit-overflow-scrolling: touch; }
-    .data-table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 12px; }
-    .data-table th, .data-table td { border: 1px solid var(--line); padding: 6px; text-align: left; vertical-align: top; white-space: nowrap; }
+    .data-table { width: 100%; min-width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.45; }
+    .data-table th, .data-table td { border: 1px solid var(--line); padding: 8px; text-align: left; vertical-align: top; white-space: normal; overflow-wrap: anywhere; word-break: normal; }
     .stacked-table-group { display: grid; gap: 12px; }
     .stacked-table-block h4 { margin: 4px 0 8px; font-size: 13px; color: var(--muted); }
     .muted { color: var(--muted); }

@@ -19,4 +19,4 @@ def render(page: str, *, start_date: str | None = None, lookback_days: int = 504
           <pre class="service-error">{traceback.format_exc(limit=4)}</pre>
         </div>
         """
-    return shell("거시분석 | Keumj Portfolio Lab", body, active="macro")
+    return shell("거시분석 | Keumj Portfolio Lab", body, active="macro", start_page_only=True)

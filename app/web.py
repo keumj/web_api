@@ -15,7 +15,7 @@ def add_start_page_link(page: str) -> str:
     return page.replace('<div class="wrap">', '<div class="wrap">' + link, 1)
 
 
-def shell(title: str, body: str, *, active: str = "portfolio", admin: bool = False) -> str:
+def shell(title: str, body: str, *, active: str = "portfolio", admin: bool = False, start_page_only: bool = False) -> str:
     active_class = {
         "portfolio": "active" if active == "portfolio" else "",
         "stock": "active" if active == "stock" else "",
@@ -25,6 +25,25 @@ def shell(title: str, body: str, *, active: str = "portfolio", admin: bool = Fal
     }
     admin_link = f'<a class="{active_class["admin"]}" href="/admin/users">사용자 관리</a>' if admin else ""
     api_link = '<a href="/docs">API</a>' if admin else ""
+    default_nav = f"""
+        <a class="{active_class["portfolio"]}" href="/portfolio/overview">포트폴리오</a>
+        <a class="{active_class["stock"]}" href="/stock/forecast">종목 분석</a>
+        <a class="{active_class["news"]}" href="/stock-news/overview">뉴스 분석</a>
+        <a class="{active_class["macro"]}" href="/macro/overview">거시분석</a>
+        {admin_link}
+        {api_link}
+    """
+    service_nav = (
+        '<a href="/">기본페이지로 돌아가기</a>'
+        if start_page_only
+        else f"""
+        {default_nav}
+        """
+    )
+    top_nav_style = "display:none;" if start_page_only else ""
+    brand_style = "display:none;" if start_page_only else ""
+    start_page_link = '<nav class="service-nav"><a href="/">기본페이지로 돌아가기</a></nav>' if start_page_only else ""
+    start_page_link = '<nav class="service-nav"><a href="/">기본페이지로 돌아가기</a></nav>' if start_page_only else ""
     return f"""<!doctype html>
 <html lang="ko">
 <head>
@@ -63,8 +82,8 @@ def shell(title: str, body: str, *, active: str = "portfolio", admin: bool = Fal
     .service-login-grid input {{ width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-size: 14px; }}
     .service-login-grid button {{ margin-top: 14px; }}
     .service-table-wrap {{ width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }}
-    .service-table {{ width: max-content; min-width: 100%; border-collapse: collapse; font-size: 12px; }}
-    .service-table th, .service-table td {{ border: 1px solid var(--line); padding: 6px; text-align: left; vertical-align: top; white-space: nowrap; }}
+    .service-table {{ width: 100%; min-width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.45; }}
+    .service-table th, .service-table td {{ border: 1px solid var(--line); padding: 8px; text-align: left; vertical-align: top; white-space: normal; overflow-wrap: anywhere; word-break: normal; }}
     .service-actions {{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }}
     .service-actions input {{ border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font-size: 13px; }}
     .service-button {{ border: 0; background: var(--brand); color: #fff; border-radius: 8px; padding: 9px 13px; cursor: pointer; font-weight: 650; }}
@@ -82,8 +101,8 @@ def shell(title: str, body: str, *, active: str = "portfolio", admin: bool = Fal
 <body>
   <header class="service-top">
     <div class="service-top-inner">
-      <div class="service-brand">Keumj Portfolio Lab</div>
-      <nav class="service-nav">
+      <div class="service-brand" style="{brand_style}">Keumj Portfolio Lab</div>
+      <nav class="service-nav" style="{top_nav_style}">
         <a class="{active_class["portfolio"]}" href="/portfolio/overview">포트폴리오</a>
         <a class="{active_class["stock"]}" href="/stock/forecast">종목 분석</a>
         <a class="{active_class["news"]}" href="/stock-news/overview">뉴스 분석</a>
@@ -91,6 +110,7 @@ def shell(title: str, body: str, *, active: str = "portfolio", admin: bool = Fal
         {admin_link}
         {api_link}
       </nav>
+      {start_page_link}
     </div>
   </header>
   <main class="service-main">{body}</main>
