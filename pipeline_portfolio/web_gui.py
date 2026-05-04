@@ -1397,7 +1397,7 @@ def _render_strategy_impact(impact_df: pd.DataFrame | None, strategy_col: str) -
         return f"""
         <div style="margin-top: 15px; padding: 10px; background: #fff; border-radius: 6px; border: 1px solid var(--line);">
           <h4 style="margin: 0 0 5px 0; font-size: 13px;">전후 기대 성과 비교 (Impact)</h4>
-          <p class="small muted" style="margin-bottom:8px;">※ 기대 수익률은 최근 수익률 추세와 통합 스코어 보정을 결합한 추정치이며, 실제 성과를 보장하지 않습니다.</p>
+          <p class="small muted" style="margin-bottom:8px;">※ 기대 수익률과 예상 변동성은 연율 기준 추정치이며, 실제 성과를 보장하지 않습니다.</p>
           {_safe_table(subset, max_rows=10)}
         </div>
         """
@@ -1413,8 +1413,8 @@ def _format_opt_df(df: pd.DataFrame) -> pd.DataFrame:
         "current_weight_pct": "현재(%)",
         "diff_weight_pct": "차이(%)",
         "suggested_trade": "추천 거래(주)",
-        "expected_return_pct": "수익(%)",
-        "volatility_pct": "변동(%)",
+        "expected_return_pct": "기대수익(연 %)",
+        "volatility_pct": "변동성(연 %)",
         "integrated_score": "점수"
     }
     cols = ["ticker", "sector", "target_weight_pct", "current_weight_pct", "diff_weight_pct", "suggested_trade", "expected_return_pct", "volatility_pct", "integrated_score"]

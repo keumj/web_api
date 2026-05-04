@@ -690,6 +690,16 @@ def _compound_return_pct_from_daily(series: pd.Series, window: int = 60) -> floa
     return float(((1.0 + tail).prod() - 1.0) * 100.0)
 
 
+def _rolling_return_pct_from_daily(series: pd.Series, window: int) -> float:
+    clean = pd.to_numeric(series, errors="coerce").dropna()
+    if len(clean) < window:
+        return np.nan
+    tail = clean.tail(max(int(window), 1))
+    if tail.empty:
+        return np.nan
+    return float(((1.0 + tail).prod() - 1.0) * 100.0)
+
+
 def _calendar_period_return_pct_from_prices(
     series: pd.Series,
     start_date: pd.Timestamp,
@@ -710,6 +720,38 @@ def _calendar_period_return_pct_from_prices(
     if float(start_price) == 0.0:
         return np.nan
     return float((in_period.iloc[-1] / start_price - 1.0) * 100.0)
+
+
+def _selected_period_return_pct_from_prices(series: pd.Series, start_date: pd.Timestamp) -> float:
+    clean = pd.to_numeric(series, errors="coerce").dropna().sort_index()
+    if clean.empty:
+        return np.nan
+
+    start_ts = pd.Timestamp(start_date).normalize()
+    in_period = clean[clean.index >= start_ts]
+    if in_period.empty:
+        return np.nan
+
+    exact_start = clean[clean.index == start_ts]
+    if not exact_start.empty:
+        start_price = exact_start.iloc[0]
+    else:
+        prior = clean[clean.index < start_ts]
+        start_price = prior.iloc[-1] if not prior.empty else in_period.iloc[0]
+
+    if float(start_price) == 0.0:
+        return np.nan
+    return float((in_period.iloc[-1] / start_price - 1.0) * 100.0)
+
+
+def _selected_period_return_pct_from_daily(series: pd.Series, start_date: pd.Timestamp) -> float:
+    clean = pd.to_numeric(series, errors="coerce").dropna().sort_index()
+    if clean.empty:
+        return np.nan
+    subset = clean[clean.index > pd.Timestamp(start_date).normalize()]
+    if subset.empty:
+        return 0.0
+    return float(((1.0 + subset).prod() - 1.0) * 100.0)
 
 
 def _fmt(value: object, digits: int = 2, suffix: str = "") -> str:
@@ -1229,10 +1271,9 @@ def _build_holdings_performance(
                 "market_value": float(row.market_value),
                 "unrealized_pnl": float(row.unrealized_pnl),
                 "return_pct": float(row.return_pct),
-                "selected_return_pct": _calendar_period_return_pct_from_prices(
+                "selected_return_pct": _selected_period_return_pct_from_prices(
                     series,
                     selected_start_ts if selected_start_ts is not None else pd.Timestamp(series.index.min()).normalize(),
-                    use_prior_reference=False,
                 ),
                 "return_wtd_pct": _calendar_period_return_pct_from_prices(series, wtd_start),
                 "return_mtd_pct": _calendar_period_return_pct_from_prices(series, mtd_start),
@@ -1364,12 +1405,14 @@ def _build_portfolio_summary(
         "unrealized_pnl": unrealized_pnl,
         "realized_pnl": float(positions["realized_pnl"].sum()),
         "total_return_pct": total_return_pct,
-        "portfolio_return_selected_pct": float(((1.0 + portfolio_daily).prod() - 1.0) * 100.0) if not portfolio_daily.empty else np.nan,
+        "portfolio_return_selected_pct": _selected_period_return_pct_from_daily(period_daily, start_ts) if start_ts is not None else (
+            float(((1.0 + portfolio_daily).prod() - 1.0) * 100.0) if not portfolio_daily.empty else np.nan
+        ),
         "portfolio_return_wtd_pct": _calc_period_ret_pct(period_daily, wtd_start),
         "portfolio_return_mtd_pct": _calc_period_ret_pct(period_daily, mtd_start),
         "portfolio_return_ytd_pct": _calc_period_ret_pct(period_daily, ytd_start),
-        "portfolio_return_20d_pct": _period_return((1.0 + portfolio_daily).cumprod(), 20) * 100.0 if not portfolio_daily.empty else np.nan,
-        "portfolio_return_60d_pct": _period_return((1.0 + portfolio_daily).cumprod(), 60) * 100.0 if not portfolio_daily.empty else np.nan,
+        "portfolio_return_20d_pct": _rolling_return_pct_from_daily(period_daily, 20),
+        "portfolio_return_60d_pct": _rolling_return_pct_from_daily(period_daily, 60),
         "portfolio_vol_annual_pct": vol,
         "benchmark_beta": beta,
         "max_drawdown_pct": _max_drawdown(portfolio_daily) * 100.0 if not portfolio_daily.empty else np.nan,
@@ -2122,7 +2165,9 @@ def build_portfolio_dashboard(
     mtd_start = end_ts.replace(day=1)
     ytd_start = end_ts.replace(month=1, day=1)
     calendar_anchor_ts = min(wtd_start, mtd_start, ytd_start)
-    calendar_price_start_ts = min(start_ts, calendar_anchor_ts - pd.Timedelta(days=14))
+    rolling_anchor_ts = end_ts - pd.Timedelta(days=100)
+    selected_anchor_ts = start_ts - pd.Timedelta(days=14)
+    calendar_price_start_ts = min(start_ts, selected_anchor_ts, calendar_anchor_ts - pd.Timedelta(days=14), rolling_anchor_ts)
 
     # CASH 티커는 외부 데이터(yfinance) 호출에서 제외
     tickers = [t for t in positions_raw["ticker"].astype(str).tolist() if t != "CASH"]
@@ -2161,7 +2206,9 @@ def build_portfolio_dashboard(
     )
     style_map, _, style_source = _build_style_map(universe, shared_db=shared_db, as_of_date=end_ts)
     positions["style_bucket"] = positions["ticker"].map(style_map).fillna("Unknown")
+    positions.loc[positions["ticker"].astype(str).eq("CASH"), "style_bucket"] = "Cash"
     holdings_performance["style_bucket"] = holdings_performance["ticker"].map(style_map).fillna("Unknown")
+    holdings_performance.loc[holdings_performance["ticker"].astype(str).eq("CASH"), "style_bucket"] = "Cash"
     stock_attribution, attribution, style_attribution = _build_relative_attribution_tables(
         positions,
         close_history,
