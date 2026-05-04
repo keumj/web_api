@@ -230,6 +230,7 @@ def _page_charts(page: str, dashboard: MacroDashboard) -> str:
 def _overview_page(dashboard: MacroDashboard) -> str:
     return f"""
     {_hero(dashboard)}
+    {_macro_nav("overview")}
     {_page_charts("overview", dashboard)}
     <div class="macro-grid two">
       <section class="service-card"><h2>핵심 요약</h2>{_table(dashboard.summary)}</section>
@@ -251,6 +252,7 @@ def _regime_page(dashboard: MacroDashboard) -> str:
     )
     return f"""
     {_hero(dashboard)}
+    {_macro_nav("regime")}
     {_page_charts("regime", dashboard)}
     <section class="service-card"><h2>레짐 분해</h2>{_table(notes)}</section>
     <section class="service-card"><h2>점수 상세</h2>{_score_bars(dashboard.scores)}</section>
@@ -260,6 +262,7 @@ def _regime_page(dashboard: MacroDashboard) -> str:
 def _rates_page(dashboard: MacroDashboard) -> str:
     return f"""
     {_hero(dashboard)}
+    {_macro_nav("rates")}
     {_page_charts("rates", dashboard)}
     <section class="service-card"><h2>금리와 커브</h2>{_table(dashboard.rates)}</section>
     <section class="service-card"><h2>해석</h2><p class="service-muted">2년 금리는 정책 기대, 10년 금리는 성장/물가 기대, 10Y-2Y 스프레드는 경기 사이클 신호로 봅니다.</p></section>
@@ -269,6 +272,7 @@ def _rates_page(dashboard: MacroDashboard) -> str:
 def _risk_page(dashboard: MacroDashboard) -> str:
     return f"""
     {_hero(dashboard)}
+    {_macro_nav("risk")}
     {_page_charts("risk", dashboard)}
     <section class="service-card"><h2>위험자산 온도</h2>{_table(dashboard.risk_assets)}</section>
     <section class="service-card"><h2>주요 지표</h2>{_table(dashboard.indicators)}</section>
@@ -278,6 +282,7 @@ def _risk_page(dashboard: MacroDashboard) -> str:
 def _dollar_page(dashboard: MacroDashboard) -> str:
     return f"""
     {_hero(dashboard)}
+    {_macro_nav("dollar")}
     {_page_charts("dollar", dashboard)}
     <section class="service-card"><h2>달러/원자재 압력</h2>{_table(dashboard.dollar_commodities)}</section>
     <section class="service-card"><h2>데이터 출처</h2>{_table(dashboard.sources)}</section>
@@ -287,6 +292,7 @@ def _dollar_page(dashboard: MacroDashboard) -> str:
 def _playbook_page(dashboard: MacroDashboard) -> str:
     return f"""
     {_hero(dashboard)}
+    {_macro_nav("playbook")}
     {_page_charts("playbook", dashboard)}
     <section class="service-card"><h2>섹터 플레이북</h2>{_table(dashboard.sector_playbook)}</section>
     <section class="service-card"><h2>사용 방법</h2><p class="service-muted">이 표는 매수/매도 신호가 아니라 현재 거시 환경에서 어떤 업종 해석을 먼저 확인할지 정하는 우선순위입니다.</p></section>
@@ -305,12 +311,12 @@ def render_body(page: str, *, start_date: str | None = None, lookback_days: int 
         "playbook": _playbook_page,
     }[active](dashboard)
     return f"""
-    <style>
+    <style>      
       .macro-nav {{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }}
       .macro-nav a {{ text-decoration:none; color:var(--brand); border:1px solid var(--line); background:#fff; border-radius:999px; padding:7px 12px; font-size:13px; }}
       .macro-nav a.active {{ background:var(--brand); color:#fff; border-color:var(--brand); }}
       .service-main > .macro-nav:first-of-type {{ display:none; }}
-      .macro-hero {{ display:flex; justify-content:space-between; gap:16px; align-items:flex-start; background:#fff; border:1px solid var(--line); border-radius:8px; padding:18px; margin-bottom:12px; }}
+      .macro-hero {{ display:flex; justify-content:space-between; gap:16px; align-items:flex-start; background:none; border:none; border-radius:8px; padding:18px; margin-bottom:12px; }}
       .macro-hero h1 {{ margin:4px 0 8px; font-size:26px; letter-spacing:0; }}
       .macro-hero p {{ margin:0; color:var(--muted); line-height:1.5; }}
       .macro-metrics {{ display:grid; grid-template-columns:repeat(2, minmax(120px, 1fr)); gap:8px; min-width:280px; }}
@@ -336,7 +342,5 @@ def render_body(page: str, *, start_date: str | None = None, lookback_days: int 
         .macro-score-row {{ grid-template-columns:120px 1fr 44px; }}
       }}
     </style>
-    <div class="macro-nav"><a href="/">기본페이지로 돌아가기</a></div>
     {page_html}
-    {_macro_nav(active)}
     """
