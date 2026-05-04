@@ -1590,6 +1590,9 @@ def _build_risk_summary(
     holding_returns: pd.DataFrame,
     portfolio_daily: pd.Series,
     benchmark_daily: pd.Series,
+    *,
+    calendar_portfolio_daily: pd.Series | None = None,
+    calendar_benchmark_daily: pd.Series | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     if positions.empty or holding_returns.empty or portfolio_daily.empty:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -1630,7 +1633,10 @@ def _build_risk_summary(
     if len(joined) > 2 and float(joined["b"].var()) > 0:
         beta = float(joined["p"].cov(joined["b"]) / joined["b"].var())
     tracking_error = float((joined["p"] - joined["b"]).std(ddof=1) * np.sqrt(252) * 100.0) if len(joined) > 2 else np.nan
-    active_return_pct = _compound_return_pct_from_daily(joined["p"] - joined["b"], min(len(joined), 60)) if len(joined) > 1 else np.nan
+    relative_portfolio_daily = portfolio_daily if calendar_portfolio_daily is None else calendar_portfolio_daily
+    relative_benchmark_daily = benchmark_daily if calendar_benchmark_daily is None else calendar_benchmark_daily
+    relative_joined = pd.concat([relative_portfolio_daily.rename("p"), relative_benchmark_daily.rename("b")], axis=1).dropna()
+    active_return_pct = _rolling_return_pct_from_daily(relative_joined["p"] - relative_joined["b"], 60) if len(relative_joined) >= 60 else np.nan
     information_ratio = (active_return_pct / tracking_error) if np.isfinite(tracking_error) and tracking_error not in (0.0, np.nan) else np.nan
     var_95 = float(portfolio_daily.quantile(0.05) * 100.0) if len(portfolio_daily) > 5 else np.nan
     cvar_95 = float(portfolio_daily[portfolio_daily <= portfolio_daily.quantile(0.05)].mean() * 100.0) if len(portfolio_daily) > 5 else np.nan
@@ -1650,8 +1656,8 @@ def _build_risk_summary(
     relative_summary = pd.DataFrame(
         [
             {
-                "benchmark_return_60d_pct": _compound_return_pct_from_daily(benchmark_daily, 60),
-                "portfolio_return_60d_pct": _compound_return_pct_from_daily(portfolio_daily, 60),
+                "benchmark_return_60d_pct": _rolling_return_pct_from_daily(relative_benchmark_daily, 60),
+                "portfolio_return_60d_pct": _rolling_return_pct_from_daily(relative_portfolio_daily, 60),
                 "active_return_60d_pct": active_return_pct,
                 "tracking_error_annual_pct": tracking_error,
                 "information_ratio": information_ratio,
@@ -1854,7 +1860,16 @@ def _build_style_exposure(
 
 def _technical_snapshot(close_history: pd.DataFrame) -> pd.DataFrame:
     if close_history.empty:
-        return pd.DataFrame(columns=["ticker", "momentum_20d_pct", "momentum_60d_pct", "distance_sma20_pct", "volatility_20d_pct", "technical_score"])
+        return pd.DataFrame(
+            columns=[
+                "ticker",
+                "momentum_20d_pct",
+                "momentum_60d_pct",
+                "distance_sma20_pct",
+                "volatility_20d_annual_pct",
+                "technical_score",
+            ]
+        )
     rows: list[dict[str, object]] = []
     for ticker in close_history.columns:
         series = pd.to_numeric(close_history[ticker], errors="coerce").dropna()
@@ -1879,7 +1894,7 @@ def _technical_snapshot(close_history: pd.DataFrame) -> pd.DataFrame:
                 "momentum_20d_pct": momentum_20,
                 "momentum_60d_pct": momentum_60,
                 "distance_sma20_pct": distance_sma20,
-                "volatility_20d_pct": volatility_20,
+                "volatility_20d_annual_pct": volatility_20,
                 "technical_score": float(np.clip(score, 0.0, 100.0)),
             }
         )
@@ -1890,7 +1905,7 @@ def _technical_snapshot(close_history: pd.DataFrame) -> pd.DataFrame:
             "momentum_20d_pct",
             "momentum_60d_pct",
             "distance_sma20_pct",
-            "volatility_20d_pct",
+            "volatility_20d_annual_pct",
             "technical_score",
         ],
     )
@@ -2199,9 +2214,24 @@ def build_portfolio_dashboard(
         end_date=end_ts.strftime("%Y-%m-%d"),
         shared_db=shared_db,
     )
+    if calendar_price_start_ts < start_ts:
+        benchmark_calendar_close, benchmark_calendar_caps, _ = _load_close_history(
+            universe,
+            start_date=calendar_price_start_ts.strftime("%Y-%m-%d"),
+            end_date=end_ts.strftime("%Y-%m-%d"),
+            shared_db=shared_db,
+        )
+    else:
+        benchmark_calendar_close = benchmark_close
+        benchmark_calendar_caps = benchmark_caps
     benchmark_daily, sector_returns, benchmark_weights = _benchmark_series(
         close_history=benchmark_close,
-        market_caps=benchmark_caps,
+        market_caps=benchmark_calendar_caps,
+        sector_frame=sector_frame,
+    )
+    benchmark_calendar_daily, _, _ = _benchmark_series(
+        close_history=benchmark_calendar_close,
+        market_caps=benchmark_calendar_caps,
         sector_frame=sector_frame,
     )
     style_map, _, style_source = _build_style_map(universe, shared_db=shared_db, as_of_date=end_ts)
@@ -2211,15 +2241,20 @@ def build_portfolio_dashboard(
     holdings_performance.loc[holdings_performance["ticker"].astype(str).eq("CASH"), "style_bucket"] = "Cash"
     stock_attribution, attribution, style_attribution = _build_relative_attribution_tables(
         positions,
-        close_history,
-        benchmark_close,
+        calendar_close_history,
+        benchmark_calendar_close,
         benchmark_weights,
         sector_frame,
         style_map=style_map,
     )
     holding_returns = _holding_returns(close_history)
     risk_summary, risk_contribution, relative_risk_summary = _build_risk_summary(
-        positions, holding_returns, portfolio_daily, benchmark_daily
+        positions,
+        holding_returns,
+        portfolio_daily,
+        benchmark_daily,
+        calendar_portfolio_daily=portfolio_calendar_daily,
+        calendar_benchmark_daily=benchmark_calendar_daily,
     )
     active_risk_contribution = _build_active_risk_contribution(
         positions,
@@ -2383,12 +2418,29 @@ def analyze_virtual_trade(
         start_ts = pd.Timestamp(start_date).normalize()
     else:
         start_ts = end_ts - pd.Timedelta(days=max(int(lookback_days), 21) * 2)
+    wtd_start = end_ts - pd.Timedelta(days=end_ts.dayofweek)
+    mtd_start = end_ts.replace(day=1)
+    ytd_start = end_ts.replace(month=1, day=1)
+    calendar_anchor_ts = min(wtd_start, mtd_start, ytd_start)
+    rolling_anchor_ts = end_ts - pd.Timedelta(days=100)
+    selected_anchor_ts = start_ts - pd.Timedelta(days=14)
+    calendar_price_start_ts = min(start_ts, selected_anchor_ts, calendar_anchor_ts - pd.Timedelta(days=14), rolling_anchor_ts)
+    analysis_symbols = sorted(set(before.positions["ticker"].astype(str).tolist() + [ticker_clean]))
     close_history, _, sources = _load_close_history(
-        sorted(set(before.positions["ticker"].astype(str).tolist() + [ticker_clean])),
+        analysis_symbols,
         start_date=start_ts.strftime("%Y-%m-%d"),
         end_date=end_ts.strftime("%Y-%m-%d"),
         shared_db=shared_db,
     )
+    if calendar_price_start_ts < start_ts:
+        calendar_close_history, _, _ = _load_close_history(
+            analysis_symbols,
+            start_date=calendar_price_start_ts.strftime("%Y-%m-%d"),
+            end_date=end_ts.strftime("%Y-%m-%d"),
+            shared_db=shared_db,
+        )
+    else:
+        calendar_close_history = close_history
     inferred_price = float(close_history[ticker_clean].dropna().iloc[-1]) if ticker_clean in close_history.columns and not close_history[ticker_clean].dropna().empty else np.nan
     trade_price = float(price) if price is not None else inferred_price
     if not np.isfinite(trade_price) or trade_price <= 0:
@@ -2418,7 +2470,7 @@ def analyze_virtual_trade(
     sector_map, component_source = _sector_map(max_symbols=500)
     positions_after_raw = _current_positions_from_trades(combined, sector_map=sector_map)
     positions_after, as_of_date = _build_positions_frame(positions_after_raw, close_history=close_history)
-    holdings_after = _build_holdings_performance(positions_after, close_history, selected_start_ts=start_ts)
+    holdings_after = _build_holdings_performance(positions_after, calendar_close_history, selected_start_ts=start_ts)
 
     # 가상 거래 후 현금 잔고 체크
     cash_warning = ""
@@ -2427,6 +2479,7 @@ def analyze_virtual_trade(
         cash_warning = f"가상 거래 경고: 실행 시 예상 현금 잔고가 마이너스(${abs(float(cash_row_after.iloc[0]['net_quantity'])):,.2f})가 됩니다."
 
     portfolio_after = _portfolio_return_series(close_history, positions_after)
+    portfolio_calendar_after = _portfolio_return_series(calendar_close_history, positions_after)
 
     sector_frame, _ = _load_component_frame(max_symbols=500)
     benchmark_close, benchmark_caps, _ = _load_close_history(
@@ -2435,9 +2488,24 @@ def analyze_virtual_trade(
         end_date=end_ts.strftime("%Y-%m-%d"),
         shared_db=shared_db,
     )
+    if calendar_price_start_ts < start_ts:
+        benchmark_calendar_close, benchmark_calendar_caps, _ = _load_close_history(
+            sector_frame["Symbol"].astype(str).tolist(),
+            start_date=calendar_price_start_ts.strftime("%Y-%m-%d"),
+            end_date=end_ts.strftime("%Y-%m-%d"),
+            shared_db=shared_db,
+        )
+    else:
+        benchmark_calendar_close = benchmark_close
+        benchmark_calendar_caps = benchmark_caps
     benchmark_daily, _, _ = _benchmark_series(
         close_history=benchmark_close,
-        market_caps=benchmark_caps,
+        market_caps=benchmark_calendar_caps,
+        sector_frame=sector_frame,
+    )
+    benchmark_calendar_daily, _, _ = _benchmark_series(
+        close_history=benchmark_calendar_close,
+        market_caps=benchmark_calendar_caps,
         sector_frame=sector_frame,
     )
     after_summary = _build_portfolio_summary(
@@ -2447,7 +2515,8 @@ def analyze_virtual_trade(
         benchmark_daily, 
         as_of_date=as_of_date,
         start_ts=start_ts,
-        end_ts=end_ts
+        end_ts=end_ts,
+        calendar_daily=portfolio_calendar_after,
     )
     before_summary = before.portfolio_summary.copy()
     before_positions = before.positions[["ticker", "market_value", "portfolio_weight", "net_quantity"]].rename(
@@ -2476,6 +2545,8 @@ def analyze_virtual_trade(
         _holding_returns(close_history),
         portfolio_after,
         benchmark_daily,
+        calendar_portfolio_daily=portfolio_calendar_after,
+        calendar_benchmark_daily=benchmark_calendar_daily,
     )
     risk_changes = pd.DataFrame()
     if not before_risk.empty and not after_risk.empty:

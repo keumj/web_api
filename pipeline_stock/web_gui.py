@@ -218,7 +218,7 @@ class _WalkForwardContext:
     saved_dir: str | None
 
 
-_RETURN_PERIOD_LABELS = ("3Y", "1Y", "6M", "1M", "YTD", "MTD")
+_RETURN_PERIOD_LABELS = ("3Y", "1Y", "6M", "1M", "YTD", "MTD", "WTD", "20D", "60D")
 
 
 def _format_pct(value: object, ndigits: int = 2) -> str:
@@ -312,18 +312,31 @@ def _compute_period_returns(series: pd.Series) -> tuple[dict[str, float | None],
         return {label: None for label in _RETURN_PERIOD_LABELS}, None
 
     latest_date, latest_close = latest
-    periods: dict[str, tuple[pd.Timestamp, bool]] = {
-        "3Y": (latest_date - pd.DateOffset(years=3), False),
-        "1Y": (latest_date - pd.DateOffset(years=1), False),
-        "6M": (latest_date - pd.DateOffset(months=6), False),
-        "1M": (latest_date - pd.DateOffset(months=1), False),
-        "YTD": (latest_date.to_period("Y").start_time.normalize(), True),
-        "MTD": (latest_date.to_period("M").start_time.normalize(), True),
+    periods: dict[str, tuple[pd.Timestamp | int, str]] = {
+        "3Y": (latest_date - pd.DateOffset(years=3), "on_or_before"),
+        "1Y": (latest_date - pd.DateOffset(years=1), "on_or_before"),
+        "6M": (latest_date - pd.DateOffset(months=6), "on_or_before"),
+        "1M": (latest_date - pd.DateOffset(months=1), "on_or_before"),
+        "YTD": (latest_date.to_period("Y").start_time.normalize(), "strict_before"),
+        "MTD": (latest_date.to_period("M").start_time.normalize(), "strict_before"),
+        "WTD": (latest_date - pd.Timedelta(days=latest_date.dayofweek), "strict_before"),
+        "20D": (20, "trading_days"),
+        "60D": (60, "trading_days"),
     }
 
     out: dict[str, float | None] = {}
-    for label, (anchor, strict_before) in periods.items():
-        base = _last_observation(series, strict_before=anchor) if strict_before else _last_observation(series, on_or_before=anchor)
+    clean = _clean_close_series(series)
+    for label, (anchor, mode) in periods.items():
+        if mode == "trading_days":
+            window = int(anchor)
+            if len(clean) <= window:
+                out[label] = None
+                continue
+            base = (pd.Timestamp(clean.index[-(window + 1)]).normalize(), float(clean.iloc[-(window + 1)]))
+        elif mode == "strict_before":
+            base = _last_observation(series, strict_before=pd.Timestamp(anchor))
+        else:
+            base = _last_observation(series, on_or_before=pd.Timestamp(anchor))
         if base is None or base[1] == 0:
             out[label] = None
             continue
@@ -360,17 +373,25 @@ def _compute_period_returns_from_daily_returns(daily_returns: pd.Series) -> tupl
         return {label: None for label in _RETURN_PERIOD_LABELS}, None
 
     latest_date = pd.Timestamp(clean.index.max()).normalize()
-    anchors: dict[str, pd.Timestamp] = {
-        "3Y": latest_date - pd.DateOffset(years=3),
-        "1Y": latest_date - pd.DateOffset(years=1),
-        "6M": latest_date - pd.DateOffset(months=6),
-        "1M": latest_date - pd.DateOffset(months=1),
-        "YTD": latest_date.to_period("Y").start_time.normalize(),
-        "MTD": latest_date.to_period("M").start_time.normalize(),
+    anchors: dict[str, tuple[pd.Timestamp | int, str]] = {
+        "3Y": (latest_date - pd.DateOffset(years=3), "after"),
+        "1Y": (latest_date - pd.DateOffset(years=1), "after"),
+        "6M": (latest_date - pd.DateOffset(months=6), "after"),
+        "1M": (latest_date - pd.DateOffset(months=1), "after"),
+        "YTD": (latest_date.to_period("Y").start_time.normalize(), "on_or_after"),
+        "MTD": (latest_date.to_period("M").start_time.normalize(), "on_or_after"),
+        "WTD": (latest_date - pd.Timedelta(days=latest_date.dayofweek), "on_or_after"),
+        "20D": (20, "tail"),
+        "60D": (60, "tail"),
     }
     out: dict[str, float | None] = {}
-    for label, anchor in anchors.items():
-        window = clean[clean.index > anchor]
+    for label, (anchor, mode) in anchors.items():
+        if mode == "tail":
+            window = clean.tail(int(anchor))
+        elif mode == "on_or_after":
+            window = clean[clean.index >= pd.Timestamp(anchor)]
+        else:
+            window = clean[clean.index > pd.Timestamp(anchor)]
         out[label] = float((1.0 + window).prod() - 1.0) if not window.empty else None
     return out, latest_date
 
@@ -4713,6 +4734,9 @@ def _html_returns_page(
           <div class="metric"><span>1M Return</span><strong>{_format_pct(ctx.period_returns.get("1M"))}</strong></div>
           <div class="metric"><span>YTD Return</span><strong>{_format_pct(ctx.period_returns.get("YTD"))}</strong></div>
           <div class="metric"><span>MTD Return</span><strong>{_format_pct(ctx.period_returns.get("MTD"))}</strong></div>
+          <div class="metric"><span>WTD Return</span><strong>{_format_pct(ctx.period_returns.get("WTD"))}</strong></div>
+          <div class="metric"><span>20D Return</span><strong>{_format_pct(ctx.period_returns.get("20D"))}</strong></div>
+          <div class="metric"><span>60D Return</span><strong>{_format_pct(ctx.period_returns.get("60D"))}</strong></div>
           <div class="metric"><span>Sector YTD Rank</span><strong>{html.escape(sector_rank_text)}</strong></div>
           <div class="metric"><span>S&P 500 YTD Rank</span><strong>{html.escape(market_rank_text)}</strong></div>
         </div>
