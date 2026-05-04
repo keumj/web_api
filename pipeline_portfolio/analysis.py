@@ -690,6 +690,28 @@ def _compound_return_pct_from_daily(series: pd.Series, window: int = 60) -> floa
     return float(((1.0 + tail).prod() - 1.0) * 100.0)
 
 
+def _calendar_period_return_pct_from_prices(
+    series: pd.Series,
+    start_date: pd.Timestamp,
+    *,
+    use_prior_reference: bool = True,
+) -> float:
+    clean = pd.to_numeric(series, errors="coerce").dropna().sort_index()
+    if clean.empty:
+        return np.nan
+
+    start_ts = pd.Timestamp(start_date).normalize()
+    in_period = clean[clean.index >= start_ts]
+    if in_period.empty:
+        return np.nan
+
+    prior = clean[clean.index < start_ts]
+    start_price = prior.iloc[-1] if use_prior_reference and not prior.empty else in_period.iloc[0]
+    if float(start_price) == 0.0:
+        return np.nan
+    return float((in_period.iloc[-1] / start_price - 1.0) * 100.0)
+
+
 def _fmt(value: object, digits: int = 2, suffix: str = "") -> str:
     if value is None:
         return "-"
@@ -1163,6 +1185,8 @@ def _build_positions_frame(
 def _build_holdings_performance(
     positions: pd.DataFrame,
     close_history: pd.DataFrame,
+    *,
+    selected_start_ts: pd.Timestamp | None = None,
 ) -> pd.DataFrame:
     if positions.empty:
         return pd.DataFrame(columns=HOLDINGS_PERFORMANCE_COLUMNS)
@@ -1170,15 +1194,6 @@ def _build_holdings_performance(
     wtd_start = ref_ts - pd.Timedelta(days=ref_ts.dayofweek)
     mtd_start = ref_ts.replace(day=1)
     ytd_start = ref_ts.replace(month=1, day=1)
-
-    def _series_period_return_pct(series: pd.Series, start_date: pd.Timestamp) -> float:
-        clean = pd.to_numeric(series, errors="coerce").dropna().sort_index()
-        if clean.empty:
-            return np.nan
-        subset = clean[clean.index >= start_date.normalize()]
-        if len(subset) < 2 or float(subset.iloc[0]) == 0.0:
-            return np.nan
-        return float((subset.iloc[-1] / subset.iloc[0] - 1.0) * 100.0)
 
     rows: list[dict[str, object]] = []
     for row in positions.itertuples(index=False):
@@ -1214,12 +1229,16 @@ def _build_holdings_performance(
                 "market_value": float(row.market_value),
                 "unrealized_pnl": float(row.unrealized_pnl),
                 "return_pct": float(row.return_pct),
-                "selected_return_pct": _series_period_return_pct(series, pd.Timestamp(series.index.min()).normalize()),
-                "return_wtd_pct": _series_period_return_pct(series, wtd_start),
-                "return_mtd_pct": _series_period_return_pct(series, mtd_start),
+                "selected_return_pct": _calendar_period_return_pct_from_prices(
+                    series,
+                    selected_start_ts if selected_start_ts is not None else pd.Timestamp(series.index.min()).normalize(),
+                    use_prior_reference=False,
+                ),
+                "return_wtd_pct": _calendar_period_return_pct_from_prices(series, wtd_start),
+                "return_mtd_pct": _calendar_period_return_pct_from_prices(series, mtd_start),
                 "return_20d_pct": _period_return(series, 20) * 100.0,
                 "return_60d_pct": _period_return(series, 60) * 100.0,
-                "return_ytd_pct": _series_period_return_pct(series, ytd_start),
+                "return_ytd_pct": _calendar_period_return_pct_from_prices(series, ytd_start),
             }
         )
     if not rows:
@@ -1289,6 +1308,7 @@ def _build_portfolio_summary(
     as_of_date: str | None,
     start_ts: pd.Timestamp | None = None,
     end_ts: pd.Timestamp | None = None,
+    calendar_daily: pd.Series | None = None,
 ) -> pd.DataFrame:
     if positions.empty:
         return pd.DataFrame(
@@ -1321,6 +1341,7 @@ def _build_portfolio_summary(
 
     # 캘린더 기반 수익률 (WTD, MTD, YTD) 계산을 위한 기준일 설정
     ref_ts = end_ts if end_ts is not None else (pd.to_datetime(as_of_date) if as_of_date else pd.Timestamp.today().normalize())
+    period_daily = portfolio_daily if calendar_daily is None else calendar_daily
     
     def _calc_period_ret_pct(daily: pd.Series, start_date: pd.Timestamp) -> float:
         if daily.empty: return np.nan
@@ -1344,9 +1365,9 @@ def _build_portfolio_summary(
         "realized_pnl": float(positions["realized_pnl"].sum()),
         "total_return_pct": total_return_pct,
         "portfolio_return_selected_pct": float(((1.0 + portfolio_daily).prod() - 1.0) * 100.0) if not portfolio_daily.empty else np.nan,
-        "portfolio_return_wtd_pct": _calc_period_ret_pct(portfolio_daily, wtd_start),
-        "portfolio_return_mtd_pct": _calc_period_ret_pct(portfolio_daily, mtd_start),
-        "portfolio_return_ytd_pct": _calc_period_ret_pct(portfolio_daily, ytd_start),
+        "portfolio_return_wtd_pct": _calc_period_ret_pct(period_daily, wtd_start),
+        "portfolio_return_mtd_pct": _calc_period_ret_pct(period_daily, mtd_start),
+        "portfolio_return_ytd_pct": _calc_period_ret_pct(period_daily, ytd_start),
         "portfolio_return_20d_pct": _period_return((1.0 + portfolio_daily).cumprod(), 20) * 100.0 if not portfolio_daily.empty else np.nan,
         "portfolio_return_60d_pct": _period_return((1.0 + portfolio_daily).cumprod(), 60) * 100.0 if not portfolio_daily.empty else np.nan,
         "portfolio_vol_annual_pct": vol,
@@ -2097,6 +2118,11 @@ def build_portfolio_dashboard(
         start_ts = pd.Timestamp(start_date).normalize()
     else:
         start_ts = end_ts - pd.Timedelta(days=lookback * 2)
+    wtd_start = end_ts - pd.Timedelta(days=end_ts.dayofweek)
+    mtd_start = end_ts.replace(day=1)
+    ytd_start = end_ts.replace(month=1, day=1)
+    calendar_anchor_ts = min(wtd_start, mtd_start, ytd_start)
+    calendar_price_start_ts = min(start_ts, calendar_anchor_ts - pd.Timedelta(days=14))
 
     # CASH 티커는 외부 데이터(yfinance) 호출에서 제외
     tickers = [t for t in positions_raw["ticker"].astype(str).tolist() if t != "CASH"]
@@ -2106,9 +2132,19 @@ def build_portfolio_dashboard(
         end_date=end_ts.strftime("%Y-%m-%d"),
         shared_db=shared_db,
     )
+    if calendar_price_start_ts < start_ts:
+        calendar_close_history, _, _ = _load_close_history(
+            tickers,
+            start_date=calendar_price_start_ts.strftime("%Y-%m-%d"),
+            end_date=end_ts.strftime("%Y-%m-%d"),
+            shared_db=shared_db,
+        )
+    else:
+        calendar_close_history = close_history
     positions, as_of_date = _build_positions_frame(positions_raw, close_history=close_history)
-    holdings_performance = _build_holdings_performance(positions, close_history)
+    holdings_performance = _build_holdings_performance(positions, calendar_close_history, selected_start_ts=start_ts)
     portfolio_daily = _portfolio_return_series(close_history, positions)
+    portfolio_calendar_daily = _portfolio_return_series(calendar_close_history, positions)
 
     sector_frame, _ = _load_component_frame(max_symbols=0)
     universe = sector_frame["Symbol"].astype(str).tolist()
@@ -2212,7 +2248,8 @@ def build_portfolio_dashboard(
         benchmark_daily, 
         as_of_date=as_of_date,
         start_ts=start_ts,
-        end_ts=end_ts
+        end_ts=end_ts,
+        calendar_daily=portfolio_calendar_daily,
     )
     diagnostics = {
         "portfolio_db": _portfolio_storage_label(portfolio_db, user_id=portfolio_user_id),
@@ -2334,7 +2371,7 @@ def analyze_virtual_trade(
     sector_map, component_source = _sector_map(max_symbols=500)
     positions_after_raw = _current_positions_from_trades(combined, sector_map=sector_map)
     positions_after, as_of_date = _build_positions_frame(positions_after_raw, close_history=close_history)
-    holdings_after = _build_holdings_performance(positions_after, close_history)
+    holdings_after = _build_holdings_performance(positions_after, close_history, selected_start_ts=start_ts)
 
     # 가상 거래 후 현금 잔고 체크
     cash_warning = ""
