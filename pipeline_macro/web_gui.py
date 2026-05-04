@@ -337,6 +337,6 @@ def render_body(page: str, *, start_date: str | None = None, lookback_days: int 
       }}
     </style>
     <div class="macro-nav"><a href="/">기본페이지로 돌아가기</a></div>
-    {_macro_nav(active)}
     {page_html}
+    {_macro_nav(active)}
     """
