@@ -38,6 +38,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/register",
         "/logout",
         "/healthz",
+        "/macro",
         "/favicon.ico",
     )
 

@@ -93,6 +93,7 @@ def _nav(active: str, is_sub_page: bool = False) -> str:
             css_parts.append("active")
         css = " ".join(css_parts)
         links.append(f'<a class="{css}" href="{href}">{html.escape(label)}</a>')
+    links.append('<a class="" href="/macro/overview">거시분석</a>')
     return (
         '<div class="nav">' + "".join(links) + "</div>"
         + """

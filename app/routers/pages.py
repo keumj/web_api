@@ -47,6 +47,10 @@ def index(request: Request, next: str | None = None, auth_error: str | None = No
           <h3>뉴스 분석</h3>
           <p>뉴스 기반 이벤트, 섹터 전이, 토픽, 가격 반응 분석을 실행합니다.</p>
         </a>
+        <a class="service-card" href="/macro/overview">
+          <h3>거시분석</h3>
+          <p>금리, 달러, 위험선호, 섹터 플레이북을 종목/뉴스 분석의 배경 환경으로 점검합니다.</p>
+        </a>
         {admin_card}
       </div>
       {auth_panel(next_url=next_url, user=user, error=error)}
@@ -89,6 +93,11 @@ def stock_home(request: Request) -> RedirectResponse:
 @router.get("/stock-news")
 def stock_news_home(request: Request) -> RedirectResponse:
     return _redirect_with_query(request, "/stock-news/overview")
+
+
+@router.get("/macro")
+def macro_home(request: Request) -> RedirectResponse:
+    return _redirect_with_query(request, "/macro/overview")
 
 
 @router.get("/stock-forecast")

@@ -4092,6 +4092,7 @@ def _nav(active: str, *, enable_technical_page: bool = False, is_sub_page: bool 
                 f'<a class="{c8}" href="/page8">Walk Forward</a>',
             ]
         )
+    links.append('<a class="" href="/macro/overview">Macro</a>')
     return '<div class="nav">' + "".join(links) + "</div>" + sync_script
 
 
