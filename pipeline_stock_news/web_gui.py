@@ -694,9 +694,9 @@ def _layout_page(
     
     body_content = f"""
   <div class="wrap">
-    {_nav(active)}
     {_page_head(title)}
     <div class="sub">{html.escape(subtitle)}</div>
+    {_nav(active)}
     {_shared_form(ctx.form, action=action, button_label=button_label)}
     {notices}
     {_summary_metrics(ctx)}
