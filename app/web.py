@@ -40,10 +40,10 @@ def shell(title: str, body: str, *, active: str = "portfolio", admin: bool = Fal
         {default_nav}
         """
     )
+    header_display = "display:none;" if start_page_only else "block"
     top_nav_style = "display:none;" if start_page_only else ""
     brand_style = "display:none;" if start_page_only else ""
-    start_page_link = '<nav class="service-nav"><a href="/">기본페이지로 돌아가기</a></nav>' if start_page_only else ""
-    start_page_link = '<nav class="service-nav"><a href="/">기본페이지로 돌아가기</a></nav>' if start_page_only else ""
+    return_button = '<div class="service-nav" style="margin-bottom:15px; justify-content: flex-start;"><a href="/">기본페이지로 돌아가기</a></div>' if start_page_only else ""
     return f"""<!doctype html>
 <html lang="ko">
 <head>
@@ -99,7 +99,7 @@ def shell(title: str, body: str, *, active: str = "portfolio", admin: bool = Fal
   </style>
 </head>
 <body>
-  <header class="service-top">
+  <header class="service-top" style="{header_display}">
     <div class="service-top-inner">
       <div class="service-brand" style="{brand_style}">Keumj Portfolio Lab</div>
       <nav class="service-nav" style="{top_nav_style}">
@@ -110,10 +110,12 @@ def shell(title: str, body: str, *, active: str = "portfolio", admin: bool = Fal
         {admin_link}
         {api_link}
       </nav>
-      {start_page_link}
     </div>
   </header>
-  <main class="service-main">{body}</main>
+  <main class="service-main">
+    {return_button}
+    {body}
+  </main>
 </body>
 </html>
 """
