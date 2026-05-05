@@ -2128,6 +2128,12 @@ def _safe_table(df: pd.DataFrame, max_rows: int = 400) -> str:
     return f'<div class="table-wrap">{table_html}</div>'
 
 
+def _metadata_card(source_table: pd.DataFrame | None) -> str:
+    if source_table is None or source_table.empty:
+        return ""
+    return f'<div class="card"><h3>데이터 소스 메타데이터</h3>{_safe_table(source_table)}</div>'
+
+
 def _stacked_table_html(
     df: pd.DataFrame,
     *,
@@ -4297,6 +4303,7 @@ def _html_page(
     metric_html = ""
     charts_html = ""
     tables_html = ""
+    metadata_html = ""
     if ctx is not None:
         summary = ctx.result.summary.iloc[0]
         metric_html = f"""
@@ -4330,9 +4337,9 @@ def _html_page(
             .head(12)
             .reset_index(drop=True)
         )
+        metadata_html = _metadata_card(ctx.source_table)
         tables_html = f"""
         <div class="tables">
-          <div class="card"><h3>데이터 소스 메타데이터</h3>{_safe_table(ctx.source_table)}</div>
           <div class="card"><h3>예측 요약</h3>{_stacked_table_html(ctx.result.summary, pinned_columns=["ticker", "as_of_date", "forecast_date"], max_tables=3, min_chunk_columns=3, section_title="예측 요약")}</div>
           <div class="card"><h3>모델 점수</h3>{_stacked_table_html(ctx.result.model_scores, pinned_columns=["model"], max_tables=2, min_chunk_columns=3, section_title="모델 점수")}</div>
           <div class="card"><h3>방향성 점수</h3>{_stacked_table_html(ctx.result.direction_scores, pinned_columns=["model"], max_tables=2, min_chunk_columns=3, section_title="방향성 점수")}</div>
@@ -4381,6 +4388,7 @@ def _html_page(
     {metric_html}
     {charts_html}
     {tables_html}
+    {metadata_html}
   </div>"""
 
     if is_sub_page:
@@ -4436,6 +4444,7 @@ def _html_walk_forward_page(
     explanation_html = ""
     charts_html = ""
     tables_html = ""
+    metadata_html = ""
     if ctx is not None:
         metric_html = f"""
         <div class="metrics">
@@ -4479,13 +4488,13 @@ def _html_walk_forward_page(
         </div>
         """
         model_table_html = _safe_table(ctx.model_table) if not ctx.model_table.empty else "<p class='hint'>Model-level diagnostics were not available.</p>"
+        metadata_html = _metadata_card(ctx.source_table)
         tables_html = f"""
         <div class="tables">
           <div class="card"><h3>검증 요약</h3>{_safe_table(ctx.summary_table)}</div>
           <div class="card"><h3>해석 가이드</h3>{_safe_table(ctx.interpretation_table)}</div>
           <div class="card"><h3>No-Trade Threshold Summary</h3>{_safe_table(ctx.threshold_table)}</div>
           <div class="card"><h3>Regime Summary</h3>{_safe_table(ctx.regime_table)}</div>
-          <div class="card"><h3>데이터 소스 메타데이터</h3>{_safe_table(ctx.source_table)}</div>
           <div class="card"><h3>모델 진단</h3>{model_table_html}</div>
           <div class="card"><h3>분할별 결과</h3>{_stacked_table_html(ctx.split_table, max_rows=120, pinned_columns=["Split", "As Of", "Realized Date"], max_tables=3, min_chunk_columns=4, section_title="분할별 결과")}</div>
         </div>
@@ -4535,6 +4544,7 @@ def _html_walk_forward_page(
     {explanation_html}
     {charts_html}
     {tables_html}
+    {metadata_html}
   </div>
 """
 
@@ -4580,6 +4590,7 @@ def _html_financial_page(
 
     metric_html = ""
     tables_html = ""
+    metadata_html = ""
     if ctx is not None:
         metric_html = f"""
         <div class="metrics">
@@ -4594,9 +4605,9 @@ def _html_financial_page(
         </div>
         """
 
+        metadata_html = _metadata_card(ctx.source_table)
         tables_html = f"""
         <div class="tables">
-          <div class="card"><h3>데이터 소스 메타데이터</h3>{_safe_table(ctx.source_table)}</div>
           <div class="card"><h3>제공자 상태</h3>{_safe_table(ctx.provider_status_table)}</div>
           <div class="card"><h3>재무 지표</h3>{_safe_table(_metrics_table(ctx.metrics))}</div>
           <div class="card"><h3>최신 재무 요약</h3>{_safe_table(ctx.summary_table)}</div>
@@ -4641,6 +4652,7 @@ def _html_financial_page(
     {info_html}
     {metric_html}
     {tables_html}
+    {metadata_html}
   </div>
 """
 
@@ -4690,6 +4702,7 @@ def _html_technical_page(
     metric_html = ""
     table_html = ""
     charts_html = ""
+    metadata_html = ""
     if ctx is not None:
         metric_html = f"""
         <div class="metrics">
@@ -4711,9 +4724,9 @@ def _html_technical_page(
             )
         charts_html = f"<div class=\"chart-grid\">{''.join(cards)}</div>" if cards else ""
 
+        metadata_html = _metadata_card(ctx.source_table)
         table_html = f"""
         <div class="tables">
-          <div class="card"><h3>데이터 소스 메타데이터</h3>{_safe_table(ctx.source_table)}</div>
           <div class="card"><h3>실행 요약</h3>{_safe_table(ctx.summary_table)}</div>
         </div>
         """
@@ -4757,6 +4770,7 @@ def _html_technical_page(
     {metric_html}
     {table_html}
     {charts_html}
+    {metadata_html}
   </div>
 """
 
@@ -4796,6 +4810,7 @@ def _html_returns_page(
     charts_html = ""
     tables_html = ""
     ranking_html = ""
+    metadata_html = ""
     if ctx is not None:
         sector_rank_text = "-" if ctx.sector_rank_ytd is None else f"{ctx.sector_rank_ytd:,d} / {ctx.sector_count:,d}"
         market_rank_text = "-" if ctx.market_rank_ytd is None else f"{ctx.market_rank_ytd:,d} / {ctx.market_count:,d}"
@@ -4823,6 +4838,7 @@ def _html_returns_page(
         </div>
         """
 
+        metadata_html = _metadata_card(ctx.source_table)
         tables_html = f"""
         <div class="tables">
           <div class="card"><h3>기간별 수익률 비교</h3>{_safe_table(ctx.summary_table)}</div>
@@ -4830,7 +4846,6 @@ def _html_returns_page(
             <div class="card"><h3>최근 10영업일 일간 수익률 ({html.escape(ctx.ticker)})</h3>{_safe_table(ctx.daily_returns_table)}</div>
             <div class="card"><h3>최근 10영업일 일간 수익률 ({html.escape(ctx.sector)} 섹터)</h3>{_safe_table(ctx.sector_daily_returns_table)}</div>
           </div>
-          <div class="card"><h3>데이터 소스 메타데이터</h3>{_safe_table(ctx.source_table)}</div>
         </div>
         """
 
@@ -4874,6 +4889,7 @@ def _html_returns_page(
     {charts_html}
     {tables_html}
     {ranking_html}
+    {metadata_html}
   </div>"""
 
     if is_sub_page:
@@ -4913,6 +4929,7 @@ def _html_risk_page(
     charts_html = ""
     tables_html = ""
     ranking_html = ""
+    metadata_html = ""
     if ctx is not None:
         sector_rank_text = "-" if ctx.sector_vol_rank_1y is None else f"{ctx.sector_vol_rank_1y:,d} / {ctx.sector_count:,d}"
         market_rank_text = "-" if ctx.market_vol_rank_1y is None else f"{ctx.market_vol_rank_1y:,d} / {ctx.market_count:,d}"
@@ -4947,11 +4964,11 @@ def _html_risk_page(
           <div class="card"><h3>20일 롤링 연율화 변동성</h3><img src="data:image/png;base64,{ctx.volatility_chart_base64}" alt="rolling volatility chart" /></div>
         </div>
         """
+        metadata_html = _metadata_card(ctx.source_table)
         tables_html = f"""
         <div class="tables">
           <div class="card"><h3>변동성·낙폭 요약</h3>{_safe_table(ctx.summary_table)}</div>
           <div class="card"><h3>최근 20영업일 충격 점검</h3>{_safe_table(ctx.recent_shock_table)}</div>
-          <div class="card"><h3>데이터 소스 메타데이터</h3>{_safe_table(ctx.source_table)}</div>
         </div>
         """
         ranking_html = f"""
@@ -4995,6 +5012,7 @@ def _html_risk_page(
     {charts_html}
     {tables_html}
     {ranking_html}
+    {metadata_html}
   </div>"""
 
     if is_sub_page:
@@ -5044,6 +5062,7 @@ def _html_factor_page(
     """
     charts_html = ""
     tables_html = ""
+    metadata_html = ""
     if ctx is not None:
         metric_html = f"""
         <div class="metrics">
@@ -5081,12 +5100,12 @@ def _html_factor_page(
           <div class="card"><h3>Cumulative Residual Return</h3><img src="data:image/png;base64,{ctx.residual_chart_base64}" alt="residual return chart" /></div>
         </div>
         """
+        metadata_html = _metadata_card(ctx.source_table)
         tables_html = f"""
         <div class="tables">
           <div class="card"><h3>팩터 요약</h3>{_safe_table(ctx.summary_table)}</div>
           <div class="card"><h3>해석 가이드</h3>{_safe_table(ctx.interpretation_table)}</div>
           <div class="card"><h3>최근 20거래일 분해표</h3>{_safe_table(ctx.recent_factor_table, max_rows=120)}</div>
-          <div class="card"><h3>데이터 소스 메타데이터</h3>{_safe_table(ctx.source_table)}</div>
         </div>
         """
 
@@ -5121,6 +5140,7 @@ def _html_factor_page(
     {explanation_html}
     {charts_html}
     {tables_html}
+    {metadata_html}
   </div>"""
 
     if is_sub_page:
@@ -5160,6 +5180,7 @@ def _html_decision_page(
     charts_html = ""
     tables_html = ""
     reason_html = ""
+    metadata_html = ""
     if ctx is not None:
         metric_html = f"""
         <div class="metrics">
@@ -5190,11 +5211,11 @@ def _html_decision_page(
           <div class="card"><h3>추가 확인 포인트</h3>{_html_reason_list(ctx.watch_items)}</div>
         </div>
         """
+        metadata_html = _metadata_card(ctx.source_table)
         tables_html = f"""
         <div class="tables">
           <div class="card"><h3>점수표</h3>{_safe_table(ctx.score_table)}</div>
           <div class="card"><h3>신호 스냅샷</h3>{_safe_table(ctx.signal_table)}</div>
-          <div class="card"><h3>데이터 소스 메타데이터</h3>{_safe_table(ctx.source_table)}</div>
         </div>
         """
 
@@ -5230,6 +5251,7 @@ def _html_decision_page(
     {charts_html}
     {reason_html}
     {tables_html}
+    {metadata_html}
   </div>
 """
 
