@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import os
 
 
 def rewrite_links(page: str, replacements: dict[str, str]) -> str:
@@ -25,6 +26,12 @@ def shell(title: str, body: str, *, active: str = "portfolio", admin: bool = Fal
     }
     admin_link = f'<a class="{active_class["admin"]}" href="/admin/users">사용자 관리</a>' if admin else ""
     api_link = '<a href="/docs">API</a>' if admin else ""
+    macro_enabled = os.getenv("ENABLE_MACRO", "false").lower() == "true"
+    macro_link = f'<a class="{active_class["macro"]}" href="/macro/overview">거시분석</a>' if macro_enabled else ""
+    header_display = "display:none;" if start_page_only else "block"
+    top_nav_style = "display:none;" if start_page_only else ""
+    brand_style = "display:none;" if start_page_only else ""
+    return_button = '<div class="service-nav" style="margin-bottom:15px; justify-content: flex-start;"><a href="/">기본페이지로 돌아가기</a></div>' if start_page_only else ""
     default_nav = f"""
         <a class="{active_class["portfolio"]}" href="/portfolio/overview">포트폴리오</a>
         <a class="{active_class["stock"]}" href="/stock/forecast">종목 분석</a>
@@ -33,17 +40,6 @@ def shell(title: str, body: str, *, active: str = "portfolio", admin: bool = Fal
         {admin_link}
         {api_link}
     """
-    service_nav = (
-        '<a href="/">기본페이지로 돌아가기</a>'
-        if start_page_only
-        else f"""
-        {default_nav}
-        """
-    )
-    header_display = "display:none;" if start_page_only else "block"
-    top_nav_style = "display:none;" if start_page_only else ""
-    brand_style = "display:none;" if start_page_only else ""
-    return_button = '<div class="service-nav" style="margin-bottom:15px; justify-content: flex-start;"><a href="/">기본페이지로 돌아가기</a></div>' if start_page_only else ""
     return f"""<!doctype html>
 <html lang="ko">
 <head>
