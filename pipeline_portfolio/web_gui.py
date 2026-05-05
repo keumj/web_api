@@ -422,6 +422,7 @@ def _date_range_form(active: str, ctx: _PageContext) -> str:
 
 def _layout(title: str, subtitle: str, active: str, ctx: _PageContext, body: str, *, show_nav: bool = True) -> str:
     nav_html = _nav(active, ctx) if show_nav else ""
+    metadata_footer = _metadata_footer(active, ctx)
     return f"""
     <!doctype html>
     <html lang="ko">
@@ -437,6 +438,7 @@ def _layout(title: str, subtitle: str, active: str, ctx: _PageContext, body: str
         {nav_html}
         <div class="sub">{html.escape(subtitle)}</div>
         {body}
+        {metadata_footer}
       </div>
     </body>
     </html>
@@ -458,6 +460,54 @@ def _message_block(ctx: _PageContext) -> str:
         parts.append(f'<div class="notice err">{html.escape(ctx.virtual_result.diagnostics["cash_warning"])}</div>')
         
     return "".join(parts)
+
+
+def _metadata_frame(label: str, payload: object) -> pd.DataFrame:
+    if isinstance(payload, dict):
+        filtered = {
+            str(key): value
+            for key, value in payload.items()
+            if str(key) != "cash_warning" and value not in (None, "")
+        }
+        if not filtered:
+            return pd.DataFrame()
+        frame = pd.DataFrame([filtered])
+    elif isinstance(payload, pd.DataFrame):
+        frame = payload.copy()
+        if frame.empty:
+            return pd.DataFrame()
+    else:
+        return pd.DataFrame()
+    frame.insert(0, "scope", label)
+    return frame
+
+
+def _metadata_footer(active: str, ctx: _PageContext) -> str:
+    notes: list[str] = []
+    frames: list[pd.DataFrame] = []
+    dashboard = ctx.dashboard
+    if dashboard is not None and dashboard.diagnostics:
+        frames.append(_metadata_frame("portfolio", dashboard.diagnostics))
+    if ctx.virtual_result is not None and ctx.virtual_result.diagnostics:
+        frames.append(_metadata_frame("virtual_trade", ctx.virtual_result.diagnostics))
+    if ctx.optimization is not None and ctx.optimization.diagnostics is not None:
+        frames.append(_metadata_frame("optimization", ctx.optimization.diagnostics))
+    if active == "data-entry":
+        notes.append("포트폴리오 거래 DB에 누적 저장되고, 가격/뉴스는 shared DB를 참조합니다.")
+    if active == "virtual-trade":
+        notes.append("10일 예측은 shared DB 가격 이력 기반의 로컬 프록시 모델로 계산합니다.")
+    notes_html = "".join(f'<div class="db-note">{html.escape(note)}</div>' for note in notes)
+    combined = pd.concat([frame for frame in frames if not frame.empty], ignore_index=True) if frames else pd.DataFrame()
+    table_html = _safe_table(combined) if not combined.empty else ""
+    if not notes_html and not table_html:
+        return ""
+    return f"""
+    <div class="card" style="margin-top: 12px;">
+      <h3 style="margin-top:0;">데이터 소스 메타데이터</h3>
+      {notes_html}
+      {table_html}
+    </div>
+    """
 
 
 def _data_entry_page(ctx: _PageContext) -> str:
@@ -518,7 +568,6 @@ def _data_entry_page(ctx: _PageContext) -> str:
           <button type="submit">거래 저장</button>
         </div>
       </form>
-      <div class="db-note">포트폴리오 거래 DB에 누적 저장되고, 가격/뉴스는 shared DB를 참조합니다.</div>
     </div>
     <div class="grid-2">
       <div class="card">
@@ -569,10 +618,6 @@ def _overview_page(ctx: _PageContext) -> str:
         <h3 style="margin-top:0;">현재 포지션</h3>
         {_safe_table(dashboard.positions if dashboard else pd.DataFrame())}
       </div>
-    </div>
-    <div class="card">
-      <h3>분석 진단</h3>
-      {_safe_table(pd.DataFrame([dashboard.diagnostics]) if dashboard else pd.DataFrame())}
     </div>
     """
     return _layout("Portfolio Lab | 포트폴리오 개요", "보유 종목별 퍼포먼스와 포트폴리오 상태를 한눈에 봅니다.", "overview", ctx, body)
@@ -789,7 +834,6 @@ def _virtual_trade_page(ctx: _PageContext) -> str:
           <div><button type="submit">가상 거래 계산</button></div>
         </div>
       </form>
-      <div class="db-note">10일 예측은 shared DB 가격 이력 기반의 로컬 프록시 모델로 계산합니다.</div>
     </div>
     <div class="grid-2">
       <div class="card">
@@ -887,10 +931,6 @@ def _optimization_page(ctx: _PageContext) -> str:
         {_safe_table(_format_opt_df(optimization.defensive) if optimization and optimization.defensive is not None else pd.DataFrame())}
         {_render_strategy_impact(optimization.impact_summary, "방어") if optimization else ""}
       </div>
-    </div>
-    <div class="card">
-      <h3 style="margin-top:0;">최적화 진단</h3>
-      {_safe_table(optimization.diagnostics if optimization else pd.DataFrame())}
     </div>
     """
     return _layout("Portfolio Lab | 최적화", "포트폴리오를 통한 S&P 500 복제와 성향별 구성 추천", "optimization", ctx, body)

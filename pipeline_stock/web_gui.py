@@ -4536,9 +4536,11 @@ def _html_walk_forward_page(
     {charts_html}
     {tables_html}
   </div>
-</body>
-</html>
 """
+
+    if is_sub_page:
+        return body_content
+    return head_content + body_content + "</body>\n</html>\n"
 
 
 def _html_financial_page(
