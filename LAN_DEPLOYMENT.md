@@ -11,7 +11,7 @@ setup_service.cmd
 
 ## 2. Start the LAN service
 
-HTTPS + login mode:
+HTTPS mode:
 
 ```cmd
 run_lan_https_service.cmd
@@ -66,16 +66,29 @@ Copy `.env.example` to `.env` when you need local settings:
 copy .env.example .env
 ```
 
-Default LAN settings:
+Default `.env` example:
 
 ```env
 KEUMJM_HOST=0.0.0.0
 KEUMJM_PORT=8515
 KEUMJM_ACCESS_MODE=lan
 KEUMJM_ENABLE_DOCS=true
+ENABLE_MACRO=false
 KEUMJM_AUTH_ENABLED=true
 KEUMJM_AUTH_COOKIE_SECURE=true
 ```
+
+If you start the bundled LAN scripts without setting these variables first,
+they default to:
+
+```env
+KEUMJM_AUTH_ENABLED=false
+ENABLE_MACRO=false
+```
+
+That makes phone/LAN preview easier before deployment. If you want login or the
+macro pages during LAN testing, set those environment variables explicitly in
+`.env` before starting the service.
 
 Admin account:
 

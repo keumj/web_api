@@ -31,4 +31,5 @@ app.include_router(pages.router)
 app.include_router(portfolio.router)
 app.include_router(stock.router)
 app.include_router(stock_news.router)
-app.include_router(macro.router)
+if settings.enable_macro:
+    app.include_router(macro.router)

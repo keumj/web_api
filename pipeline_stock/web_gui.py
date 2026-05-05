@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import base64
 import html
@@ -632,44 +632,44 @@ def _risk_commentary(
     if ticker_vol_252d is not None and sector_vol_252d is not None and market_vol_252d is not None:
         if ticker_vol_252d > sector_vol_252d * 1.15 and ticker_vol_252d > market_vol_252d * 1.15:
             parts.append(
-                f"{ticker}???꾩옱 1???ㅽ쁽蹂?숈꽦 湲곗??쇰줈 {sector} ?뱁꽣? ?쒓?珥앹븸媛以?S&P 500蹂대떎 蹂?숈꽦???믪? ?몄엯?덈떎."
+                f"{ticker}는 현재 1년 실현변동성 기준으로 {sector} 섹터와 시가총액가중 S&P 500보다 변동성이 높은 편입니다."
             )
             risk_bias = "high"
         elif ticker_vol_252d < sector_vol_252d * 0.9 and ticker_vol_252d < market_vol_252d * 0.9:
             parts.append(
-                f"{ticker}???꾩옱 1???ㅽ쁽蹂?숈꽦 湲곗??쇰줈 {sector} ?뱁꽣? ?쒓?珥앹븸媛以?S&P 500蹂대떎 諛⑹뼱?곸씤 ?吏곸엫??蹂댁씠怨??덉뒿?덈떎."
+                f"{ticker}는 현재 1년 실현변동성 기준으로 {sector} 섹터와 시가총액가중 S&P 500보다 방어적인 움직임을 보이고 있습니다."
             )
             risk_bias = "low"
         else:
             parts.append(
-                f"{ticker}???꾩옱 由ъ뒪??媛뺣룄??{sector} ?뱁꽣? ?쒓?珥앹븸媛以?S&P 500???泥대줈 洹쇱젒???섏??낅땲??"
+                f"{ticker}의 현재 리스크 강도는 {sector} 섹터와 시가총액가중 S&P 500에 대체로 근접한 수준입니다."
             )
     if ticker_max_drawdown_1y is not None:
         if ticker_max_drawdown_1y <= -0.25:
-            parts.append("理쒓렐 1??理쒕??숉룺??源딆? ?몄씠??諛섎벑???섏삤?붾씪??媛寃?寃쎈줈???붾뱾由쇱쓣 ?ш쾶 媛먯닔?댁빞 ?섎뒗 醫낅ぉ??媛源앹뒿?덈떎.")
+            parts.append("최근 1년 최대낙폭이 깊은 편이라 반등이 나오더라도 가격 경로의 흔들림을 크게 감수해야 하는 종목에 가깝습니다.")
             risk_bias = "high"
         elif ticker_max_drawdown_1y <= -0.12:
-            parts.append("理쒓렐 1??理쒕??숉룺? ?덉뿉 ?꾩?留? ??뺤＜ ?쒗솚 援ш컙?먯꽌 異⑸텇??愿李?媛?ν븳 踰붿쐞 ?덉뿉 ?덉뒿?덈떎.")
+            parts.append("최근 1년 최대낙폭은 눈에 띄지만, 대형주 순환 구간에서 충분히 관찰 가능한 범위 안에 있습니다.")
         else:
-            parts.append("理쒓렐 1??理쒕??숉룺? 鍮꾧탳?????듭젣???몄엯?덈떎.")
+            parts.append("최근 1년 최대낙폭은 비교적 잘 통제된 편입니다.")
     if beta_market_1y is not None:
         if beta_market_1y >= 1.2:
-            parts.append("S&P 500 ?鍮?踰좏?媛 1蹂대떎 ?믪븘 ?쒖옣???붾뱾由???二쇨? 蹂?숈씠 ???ш쾶 ?뺣???媛?μ꽦???덉뒿?덈떎.")
+            parts.append("S&P 500 대비 베타가 1보다 높아 시장이 흔들릴 때 주가 변동이 더 크게 확대될 가능성이 있습니다.")
             if risk_bias != "low":
                 risk_bias = "high"
         elif beta_market_1y <= 0.8:
-            parts.append("S&P 500 ?鍮?踰좏?媛 ??븘 理쒓렐?먮뒗 ?쒖옣 ?꾩껜蹂대떎 誘쇨컧?꾧? ??? ?먮쫫?쇰줈 ?댁꽍?????덉뒿?덈떎.")
+            parts.append("S&P 500 대비 베타가 낮아 최근에는 시장 전체보다 민감도가 낮은 흐름으로 해석할 수 있습니다.")
             if risk_bias == "neutral":
                 risk_bias = "low"
     if var_95_1d is not None:
-        parts.append(f"95% 湲곗? 1????궗??VaR????{_format_pct(var_95_1d)}濡? ?섎（ ?⑥쐞 ?먯떎 ?덉슜 踰붿쐞瑜??먭?????李멸퀬?섍린 醫뗭뒿?덈떎.")
+        parts.append(f"95% 기준 1일 역사적 VaR는 약 {_format_pct(var_95_1d)}로, 하루 단위 손실 허용 범위를 점검할 때 참고하기 좋습니다.")
 
     if risk_bias == "high":
-        parts.append("醫낇빀?섎㈃ ?꾩옱??湲곕??섏씡??蹂대뜑?쇰룄 異붽꺽 吏꾩엯蹂대떎??遺꾪븷 ?묎렐怨?蹂댁닔?곸씤 ?먯젅 愿由ъ뿉 ??臾닿쾶瑜??먮뒗 ?몄씠 ?곸젅?⑸땲??")
+        parts.append("종합하면 현재는 기대수익을 보더라도 추격 진입보다는 분할 접근과 보수적인 손절 관리에 더 무게를 두는 편이 적절합니다.")
     elif risk_bias == "low":
-        parts.append("醫낇빀?섎㈃ ?꾩옱???곷??곸쑝濡?諛⑹뼱?곸씤 援ш컙??媛源뚯썙 湲됯꺽??蹂?숈꽦 遺?대낫?ㅻ뒗 ?뚮┝紐???묒씠??遺꾪븷 吏꾩엯 寃?좉? ?ъ슫 ?몄엯?덈떎.")
+        parts.append("종합하면 현재는 상대적으로 방어적인 구간에 가까워 급격한 변동성 부담보다는 눌림목 대응이나 분할 진입 검토가 쉬운 편입니다.")
     else:
-        parts.append("醫낇빀?섎㈃ ?꾩옱??怨듦꺽??留ㅼ닔??怨쇰룄??諛⑹뼱 以??쒖そ?쇰줈 移섏슦移섍린蹂대떎, 以묐┰?곸씤 ?ъ???愿由ъ? 媛寃??뺤씤?????댁슱由щ뒗 援ш컙?낅땲??")
+        parts.append("종합하면 현재는 공격적 매수나 과도한 방어 중 한쪽으로 치우치기보다, 중립적인 포지션 관리와 가격 확인이 더 어울리는 구간입니다.")
 
     return " ".join(parts)
 
@@ -685,22 +685,22 @@ def _format_score(value: float) -> str:
 def _decision_label(total_score: float) -> tuple[str, str]:
     abs_score = abs(total_score)
     if total_score >= 4.5:
-        label = "留ㅼ닔 ?곗쐞"
+        label = "매수 우위"
     elif total_score >= 2.0:
-        label = "?쏀븳 留ㅼ닔 ?곗쐞"
+        label = "약한 매수 우위"
     elif total_score <= -4.5:
-        label = "留ㅻ룄/李⑥씡?ㅽ쁽 ?곗쐞"
+        label = "매도/차익실현 우위"
     elif total_score <= -2.0:
-        label = "?쏀븳 留ㅻ룄 ?곗쐞"
+        label = "약한 매도 우위"
     else:
-        label = "Neutral / Watch"
+        label = "중립 / 관망"
 
     if abs_score >= 5.5:
-        confidence = "?믪쓬"
+        confidence = "높음"
     elif abs_score >= 3.0:
-        confidence = "蹂댄넻"
+        confidence = "보통"
     else:
-        confidence = "??쓬"
+        confidence = "낮음"
     return label, confidence
 
 
@@ -797,38 +797,38 @@ def _run_decision_once(
     if np.isfinite(ma20):
         if last_close >= ma20:
             trend_score += 0.5
-            bullish.append(f"醫낃?媛 MA20 ?꾩뿉 ?덉뼱 ?④린 異붿꽭???꾩쭅 ?댁븘 ?덉뒿?덈떎. ?꾩옱媛 {last_close:,.2f}, MA20 {ma20:,.2f}?낅땲??")
+            bullish.append(f"종가가 MA20 위에 있어 단기 추세는 아직 살아 있습니다. 현재가 {last_close:,.2f}, MA20 {ma20:,.2f}입니다.")
             trend_details.append("price>MA20")
         else:
             trend_score -= 0.5
-            bearish.append(f"醫낃?媛 MA20 ?꾨옒濡??대젮? ?④린 異붿꽭???쏀빐吏??곹깭?낅땲?? ?꾩옱媛 {last_close:,.2f}, MA20 {ma20:,.2f}?낅땲??")
+            bearish.append(f"종가가 MA20 아래로 내려와 단기 추세는 약해진 상태입니다. 현재가 {last_close:,.2f}, MA20 {ma20:,.2f}입니다.")
             trend_details.append("price<MA20")
     if np.isfinite(ma60):
         if last_close >= ma60:
             trend_score += 0.5
-            bullish.append(f"醫낃?媛 MA60 ?꾩뿉 ?덉뼱 以묎린 異붿꽭 ?쇱넀? ?꾩쭅 ?쒗븳?곸엯?덈떎. MA60? {ma60:,.2f}?낅땲??")
+            bullish.append(f"종가가 MA60 위에 있어 중기 추세 훼손은 아직 제한적입니다. MA60은 {ma60:,.2f}입니다.")
             trend_details.append("price>MA60")
         else:
             trend_score -= 0.5
-            bearish.append(f"醫낃?媛 MA60 ?꾨옒???덉뼱 以묎린 湲곗??쇰줈??諛⑹뼱?μ씠 ?쏀븳 ?몄엯?덈떎. MA60? {ma60:,.2f}?낅땲??")
+            bearish.append(f"종가가 MA60 아래에 있어 중기 기준으로는 방어력이 약한 편입니다. MA60은 {ma60:,.2f}입니다.")
             trend_details.append("price<MA60")
     if np.isfinite(ma120):
         if last_close >= ma120:
             trend_score += 0.5
-            bullish.append(f"?κ린 湲곗??좎씤 MA120 ?꾩뿉??嫄곕옒?섍퀬 ?덉뼱 ??異붿꽭 ?먯껜???꾩쭅 ?곗긽???댁꽍??媛?ν빀?덈떎. MA120? {ma120:,.2f}?낅땲??")
+            bullish.append(f"장기 기준선인 MA120 위에서 거래되고 있어 큰 추세 자체는 아직 우상향 해석이 가능합니다. MA120은 {ma120:,.2f}입니다.")
             trend_details.append("price>MA120")
         else:
             trend_score -= 0.75
-            bearish.append(f"?κ린 湲곗??좎씤 MA120 ?꾨옒???덉뼱 異붿꽭??留ㅼ닔 愿?먯뿉?쒕뒗 ?좎쨷???꾩슂媛 ?덉뒿?덈떎. MA120? {ma120:,.2f}?낅땲??")
+            bearish.append(f"장기 기준선인 MA120 아래에 있어 추세형 매수 관점에서는 신중할 필요가 있습니다. MA120은 {ma120:,.2f}입니다.")
             trend_details.append("price<MA120")
     if np.isfinite(ma20) and np.isfinite(ma60) and np.isfinite(ma120):
         if ma20 > ma60 > ma120:
             trend_score += 0.5
-            bullish.append("MA20 > MA60 > MA120 ?뺣같?댁씠??異붿꽭 異붿쥌 愿?먯뿉?쒕뒗 留ㅼ닔 ?쇰━媛 鍮꾧탳???좊챸?⑸땲??")
+            bullish.append("MA20 > MA60 > MA120 정배열이라 추세 추종 관점에서는 매수 논리가 비교적 선명합니다.")
             trend_details.append("bull_alignment")
         elif ma20 < ma60 < ma120:
             trend_score -= 0.75
-            bearish.append("MA20 < MA60 < MA120 ??같?댁씠??諛섎벑???섏???援ъ“?곸쑝濡쒕뒗 ?쎌꽭 履??댁꽍???곗꽑?낅땲??")
+            bearish.append("MA20 < MA60 < MA120 역배열이라 반등이 나와도 구조적으로는 약세 쪽 해석이 우선입니다.")
             trend_details.append("bear_alignment")
     trend_score = _clip_score(trend_score)
     score_rows.append({"Category": "Trend", "Score": trend_score, "Detail": ", ".join(trend_details) or "-"})
@@ -838,37 +838,37 @@ def _run_decision_once(
     if np.isfinite(rsi14):
         if rsi14 <= 35:
             momentum_score += 0.9
-            bullish.append(f"RSI(14) {rsi14:,.1f}濡?怨쇰ℓ?꾧텒??媛源뚯썙 ?④린 諛섎벑 留ㅼ닔 ?쇰━媛 ?댁븘 ?덉뒿?덈떎.")
+            bullish.append(f"RSI(14) {rsi14:,.1f}로 과매도권에 가까워 단기 반등 매수 논리가 살아 있습니다.")
             momentum_details.append("rsi_low")
         elif rsi14 <= 45:
             momentum_score += 0.3
-            bullish.append(f"RSI(14) {rsi14:,.1f}濡?怨쇱뿴 遺?댁? ?ъ? ?딆븘 ?뚮┝紐?留ㅼ닔 寃?좉? 媛?ν빀?덈떎.")
+            bullish.append(f"RSI(14) {rsi14:,.1f}로 과열 부담은 크지 않아 눌림목 매수 검토가 가능합니다.")
             momentum_details.append("rsi_near_low")
         elif rsi14 >= 70:
             momentum_score -= 0.9
-            bearish.append(f"RSI(14) {rsi14:,.1f}濡?怨쇰ℓ?섍텒??媛源뚯썙 ?좉퇋 異붽꺽留ㅼ닔??遺?댁씠 ?쎈땲??")
+            bearish.append(f"RSI(14) {rsi14:,.1f}로 과매수권에 가까워 신규 추격매수는 부담이 큽니다.")
             momentum_details.append("rsi_high")
         elif rsi14 >= 60:
             momentum_score -= 0.3
-            bearish.append(f"RSI(14) {rsi14:,.1f}濡??④린 ?닿린媛 ?믪븘??留ㅼ닔蹂대떎 李⑥씡?ㅽ쁽 ?쇰━媛 議곌툑 ??媛뺥빀?덈떎.")
+            bearish.append(f"RSI(14) {rsi14:,.1f}로 단기 열기가 높아져 매수보다 차익실현 논리가 조금 더 강합니다.")
             momentum_details.append("rsi_near_high")
     if np.isfinite(macd_value) and np.isfinite(signal_value) and np.isfinite(hist_value):
         if macd_value > signal_value and hist_value > 0:
             momentum_score += 0.8
-            bullish.append(f"MACD媛 ?쒓렇?먯꽑 ?꾩뿉 ?덇퀬 ?덉뒪?좉렇?⑤룄 ?뚮윭?ㅻ씪 紐⑤찘?? ?꾩쭅 ?곸듅 履쎌뿉 媛源앹뒿?덈떎. MACD {macd_value:,.3f}, Signal {signal_value:,.3f}?낅땲??")
+            bullish.append(f"MACD가 시그널선 위에 있고 히스토그램도 플러스라 모멘텀은 아직 상승 쪽에 가깝습니다. MACD {macd_value:,.3f}, Signal {signal_value:,.3f}입니다.")
             momentum_details.append("macd_bull")
         elif macd_value < signal_value and hist_value < 0:
             momentum_score -= 0.8
-            bearish.append(f"MACD媛 ?쒓렇?먯꽑 ?꾨옒?닿퀬 ?덉뒪?좉렇?⑤룄 留덉씠?덉뒪??紐⑤찘?? ?쎌꽭 履쎌엯?덈떎. MACD {macd_value:,.3f}, Signal {signal_value:,.3f}?낅땲??")
+            bearish.append(f"MACD가 시그널선 아래이고 히스토그램도 마이너스라 모멘텀은 약세 쪽입니다. MACD {macd_value:,.3f}, Signal {signal_value:,.3f}입니다.")
             momentum_details.append("macd_bear")
     if np.isfinite(band_pos):
         if band_pos <= 0.2:
             momentum_score += 0.6
-            bullish.append("二쇨?媛 蹂쇰┛? 諛대뱶 ?섎떒??媛源뚯썙 湲곗닠??諛섎벑 愿?먯쓽 留ㅼ닔 洹쇨굅媛 ?앷퉩?덈떎.")
+            bullish.append("주가가 볼린저 밴드 하단에 가까워 기술적 반등 관점의 매수 근거가 생깁니다.")
             momentum_details.append("bb_low")
         elif band_pos >= 0.8:
             momentum_score -= 0.6
-            bearish.append("二쇨?媛 蹂쇰┛? 諛대뱶 ?곷떒??媛源뚯썙 ?④린 怨쇱뿴怨??섎룎由?媛?μ꽦???④퍡 遊먯빞 ?⑸땲??")
+            bearish.append("주가가 볼린저 밴드 상단에 가까워 단기 과열과 되돌림 가능성을 함께 봐야 합니다.")
             momentum_details.append("bb_high")
     momentum_score = _clip_score(momentum_score)
     score_rows.append({"Category": "Momentum", "Score": momentum_score, "Detail": ", ".join(momentum_details) or "-"})
@@ -888,31 +888,31 @@ def _run_decision_once(
             continue
         if ticker_return > sector_return and ticker_return > market_return:
             relative_score += weight
-            bullish.append(f"{label} ?섏씡瑜좎씠 ?뱁꽣? S&P 500??紐⑤몢 ?곹쉶???곷?媛뺣룄???고샇?곸엯?덈떎. 醫낅ぉ {_format_pct(ticker_return)}, ?뱁꽣 {_format_pct(sector_return)}, S&P 500 {_format_pct(market_return)}?낅땲??")
+            bullish.append(f"{label} 수익률이 섹터와 S&P500을 모두 상회해 상대강도는 우호적입니다. 종목 {_format_pct(ticker_return)}, 섹터 {_format_pct(sector_return)}, S&P500 {_format_pct(market_return)}입니다.")
             relative_details.append(f"{label}_outperform")
         elif ticker_return < sector_return and ticker_return < market_return:
             relative_score -= weight
-            bearish.append(f"{label} ?섏씡瑜좎씠 ?뱁꽣? S&P 500??紐⑤몢 諛묐룎???곷?媛뺣룄???쏀빀?덈떎. 醫낅ぉ {_format_pct(ticker_return)}, ?뱁꽣 {_format_pct(sector_return)}, S&P 500 {_format_pct(market_return)}?낅땲??")
+            bearish.append(f"{label} 수익률이 섹터와 S&P500을 모두 밑돌아 상대강도는 약합니다. 종목 {_format_pct(ticker_return)}, 섹터 {_format_pct(sector_return)}, S&P500 {_format_pct(market_return)}입니다.")
             relative_details.append(f"{label}_underperform")
     if returns_ctx.sector_rank_ytd is not None and returns_ctx.sector_count > 0:
         sector_pct = returns_ctx.sector_rank_ytd / max(1, returns_ctx.sector_count)
         if sector_pct <= 0.25:
             relative_score += 0.4
-            bullish.append(f"?뱁꽣 ??YTD ?쒖쐞媛 ?곸쐞沅?{returns_ctx.sector_rank_ytd}/{returns_ctx.sector_count})?대씪 媛뺥븳 醫낅ぉ援곗뿉 ?랁빀?덈떎.")
+            bullish.append(f"섹터 내 YTD 순위가 상위권({returns_ctx.sector_rank_ytd}/{returns_ctx.sector_count})이라 강한 종목군에 속합니다.")
             relative_details.append("sector_top_quartile")
         elif sector_pct >= 0.75:
             relative_score -= 0.4
-            bearish.append(f"?뱁꽣 ??YTD ?쒖쐞媛 ?섏쐞沅?{returns_ctx.sector_rank_ytd}/{returns_ctx.sector_count})?대씪 ?섍툒 二쇰룄沅뚯씠 ?쏀빀?덈떎.")
+            bearish.append(f"섹터 내 YTD 순위가 하위권({returns_ctx.sector_rank_ytd}/{returns_ctx.sector_count})이라 수급 주도권이 약합니다.")
             relative_details.append("sector_bottom_quartile")
     if returns_ctx.market_rank_ytd is not None and returns_ctx.market_count > 0:
         market_pct = returns_ctx.market_rank_ytd / max(1, returns_ctx.market_count)
         if market_pct <= 0.10:
             relative_score += 0.3
-            bullish.append(f"S&P 500 ?꾩껜?먯꽌??YTD ?곸쐞沅?{returns_ctx.market_rank_ytd}/{returns_ctx.market_count})?대씪 ?쒖옣 二쇰룄二??깃꺽???덉뒿?덈떎.")
+            bullish.append(f"S&P500 전체에서도 YTD 상위권({returns_ctx.market_rank_ytd}/{returns_ctx.market_count})이라 시장 주도주 성격이 있습니다.")
             relative_details.append("market_top_decile")
         elif market_pct >= 0.90:
             relative_score -= 0.3
-            bearish.append(f"S&P 500 ?꾩껜?먯꽌??YTD ?섏쐞沅?{returns_ctx.market_rank_ytd}/{returns_ctx.market_count})?대씪 ?쎌꽭 ?먮쫫???쒕졆?⑸땲??")
+            bearish.append(f"S&P500 전체에서도 YTD 하위권({returns_ctx.market_rank_ytd}/{returns_ctx.market_count})이라 약세 흐름이 뚜렷합니다.")
             relative_details.append("market_bottom_decile")
     relative_score = _clip_score(relative_score)
     score_rows.append({"Category": "Relative Strength", "Score": relative_score, "Detail": ", ".join(relative_details) or "-"})
@@ -923,38 +923,38 @@ def _run_decision_once(
         sector_risk_pct = risk_ctx.sector_vol_rank_1y / max(1, risk_ctx.sector_count)
         if sector_risk_pct <= 0.25:
             risk_score -= 0.6
-            bearish.append(f"?뱁꽣 ??1??蹂?숈꽦 ?쒖쐞媛 ?곸쐞沅?{risk_ctx.sector_vol_rank_1y}/{risk_ctx.sector_count})?대씪 ?붾뱾由쇱씠 ???몄엯?덈떎.")
+            bearish.append(f"섹터 내 1년 변동성 순위가 상위권({risk_ctx.sector_vol_rank_1y}/{risk_ctx.sector_count})이라 흔들림이 큰 편입니다.")
             risk_details.append("sector_high_vol")
         elif sector_risk_pct >= 0.75:
             risk_score += 0.4
-            bullish.append(f"?뱁꽣 ??1??蹂?숈꽦 ?쒖쐞媛 ??? ??{risk_ctx.sector_vol_rank_1y}/{risk_ctx.sector_count})?대씪 諛⑹뼱?μ씠 ?곷??곸쑝濡??レ뒿?덈떎.")
+            bullish.append(f"섹터 내 1년 변동성 순위가 낮은 편({risk_ctx.sector_vol_rank_1y}/{risk_ctx.sector_count})이라 방어력이 상대적으로 낫습니다.")
             risk_details.append("sector_low_vol")
     if risk_ctx.ticker_max_drawdown_1y is not None:
         if risk_ctx.ticker_max_drawdown_1y <= -0.25:
             risk_score -= 0.9
-            bearish.append(f"理쒓렐 1??理쒕??숉룺??{_format_pct(risk_ctx.ticker_max_drawdown_1y)}濡?源딆뼱, ?먯떎 ?뚮났???쒓컙?????꾩슂?????덉뒿?덈떎.")
+            bearish.append(f"최근 1년 최대낙폭이 {_format_pct(risk_ctx.ticker_max_drawdown_1y)}로 깊어, 손실 회복에 시간이 더 필요할 수 있습니다.")
             risk_details.append("deep_drawdown")
         elif risk_ctx.ticker_max_drawdown_1y >= -0.12:
             risk_score += 0.6
-            bullish.append(f"理쒓렐 1??理쒕??숉룺??{_format_pct(risk_ctx.ticker_max_drawdown_1y)} ?섏??쇰줈 鍮꾧탳?????듭젣?섍퀬 ?덉뒿?덈떎.")
+            bullish.append(f"최근 1년 최대낙폭이 {_format_pct(risk_ctx.ticker_max_drawdown_1y)} 수준으로 비교적 잘 통제되고 있습니다.")
             risk_details.append("contained_drawdown")
     if risk_ctx.beta_market_1y is not None:
         if risk_ctx.beta_market_1y >= 1.2:
             risk_score -= 0.4
-            bearish.append(f"S&P 500 ?鍮?踰좏?媛 {risk_ctx.beta_market_1y:,.2f}濡??믪븘 ?쒖옣 湲됰씫 ??異⑷꺽????而ㅼ쭏 ???덉뒿?덈떎.")
+            bearish.append(f"S&P500 대비 베타가 {risk_ctx.beta_market_1y:,.2f}로 높아 시장 급락 시 충격이 더 커질 수 있습니다.")
             risk_details.append("high_beta")
         elif risk_ctx.beta_market_1y <= 0.8:
             risk_score += 0.4
-            bullish.append(f"S&P 500 ?鍮?踰좏?媛 {risk_ctx.beta_market_1y:,.2f}濡???븘 ?ъ???愿由ш? ?곷??곸쑝濡??섏썡???몄엯?덈떎.")
+            bullish.append(f"S&P500 대비 베타가 {risk_ctx.beta_market_1y:,.2f}로 낮아 포지션 관리가 상대적으로 수월한 편입니다.")
             risk_details.append("low_beta")
     if risk_ctx.var_95_1d is not None:
         if risk_ctx.var_95_1d >= 0.035:
             risk_score -= 0.3
-            bearish.append(f"95% 1??VaR媛 {_format_pct(risk_ctx.var_95_1d)}濡??믪븘 ?④린 ?먯떎 ?덉슜 踰붿쐞瑜??됰꼮???≪븘???⑸땲??")
+            bearish.append(f"95% 1일 VaR가 {_format_pct(risk_ctx.var_95_1d)}로 높아 단기 손실 허용 범위를 넉넉히 잡아야 합니다.")
             risk_details.append("high_var")
         elif risk_ctx.var_95_1d <= 0.02:
             risk_score += 0.2
-            bullish.append(f"95% 1??VaR媛 {_format_pct(risk_ctx.var_95_1d)} ?섏??대씪 ?쇨컙 由ъ뒪??遺?댁? 怨쇰룄?섏? ?딆뒿?덈떎.")
+            bullish.append(f"95% 1일 VaR가 {_format_pct(risk_ctx.var_95_1d)} 수준이라 일간 리스크 부담은 과도하지 않습니다.")
             risk_details.append("moderate_var")
     risk_score = _clip_score(risk_score)
     score_rows.append({"Category": "Risk", "Score": risk_score, "Detail": ", ".join(risk_details) or "-"})
@@ -970,46 +970,59 @@ def _run_decision_once(
         if roe is not None:
             if roe >= 0.15:
                 valuation_score += 0.7
-                bullish.append(f"ROE媛 {_format_pct(roe)}濡??믪븘 ?먮낯?⑥쑉? 留ㅼ닔 ?쇰━瑜?蹂닿컯?⑸땲??")
+                bullish.append(f"ROE가 {_format_pct(roe)}로 높아 자본효율은 매수 논리를 보강합니다.")
                 valuation_details.append("high_roe")
             elif roe <= 0.08:
                 valuation_score -= 0.7
-                bearish.append(f"ROE媛 {_format_pct(roe)} ?섏??대씪 ?섏씡??痢〓㈃??留ㅻ젰? ?쏀빀?덈떎.")
+                bearish.append(f"ROE가 {_format_pct(roe)} 수준이라 수익성 측면의 매력은 약합니다.")
                 valuation_details.append("low_roe")
         if per is not None:
             if per <= 20:
                 valuation_score += 0.4
-                bullish.append(f"PER??{per:,.2f}諛??섏??대씪 怨좏룊媛 遺?댁? ?곷??곸쑝濡??ъ? ?딆뒿?덈떎.")
+                bullish.append(f"PER이 {per:,.2f}배 수준이라 고평가 부담은 상대적으로 크지 않습니다.")
                 valuation_details.append("fair_per")
             elif per >= 30:
                 valuation_score -= 0.5
-                bearish.append(f"PER??{per:,.2f}諛곕줈 ?믪븘 ?ㅼ쟻??議곌툑留??붾뱾?ㅻ룄 諛몃쪟?먯씠???뺣컯??諛쏆쓣 ???덉뒿?덈떎.")
+                bearish.append(f"PER이 {per:,.2f}배로 높아 실적이 조금만 흔들려도 밸류에이션 압박을 받을 수 있습니다.")
                 valuation_details.append("high_per")
         if pbr is not None:
             if pbr <= 3:
                 valuation_score += 0.2
-                bullish.append(f"PBR??{pbr:,.2f}諛??섏??대씪 ?먯궛 ?鍮?怨쇱뿴 遺?댁? ?쒗븳?곸엯?덈떎.")
+                bullish.append(f"PBR이 {pbr:,.2f}배 수준이라 자산 대비 과열 부담은 제한적입니다.")
                 valuation_details.append("fair_pbr")
             elif pbr >= 6:
                 valuation_score -= 0.3
-                bearish.append(f"PBR??{pbr:,.2f}諛곕줈 ?믪븘 湲곕?移섍? ?대? 媛寃⑹뿉 留롮씠 諛섏쁺?섏뿀?????덉뒿?덈떎.")
+                bearish.append(f"PBR이 {pbr:,.2f}배로 높아 기대치가 이미 가격에 많이 반영되었을 수 있습니다.")
                 valuation_details.append("high_pbr")
         if not valuation_details:
-            watch_items.append("?щТ ?ㅻ깄?룹? 議댁옱?섏?留?PER/PBR/ROE 以??쇰?媛 鍮꾩뼱 ?덉뼱 諛몃쪟?먯씠???먮떒? ?쒗븳?곸엯?덈떎.")
+            watch_items.append("재무 스냅샷은 존재하지만 PER/PBR/ROE 중 일부가 비어 있어 밸류에이션 판단은 제한적입니다.")
     else:
-        watch_items.append("湲덉쑖 ?ㅻ깄?룹씠 ?꾩쭅 ?놁뼱??諛몃쪟?먯씠???먯닔??以묐┰ 泥섎━?덉뒿?덈떎.")
+        watch_items.append("금융 스냅샷이 아직 없어서 밸류에이션 점수는 중립 처리했습니다.")
     valuation_score = _clip_score(valuation_score, low=-1.5, high=1.5)
     score_rows.append({"Category": "Valuation", "Score": valuation_score, "Detail": ", ".join(valuation_details) or "neutral"})
 
     total_score = float(sum(float(row["Score"]) for row in score_rows))
     recommendation, confidence = _decision_label(total_score)
 
-    if recommendation in {"留ㅼ닔 ?곗쐞", "?쏀븳 留ㅼ닔 ?곗쐞"}:
-        final_commentary = f"{ticker} decision signal is {recommendation}. Momentum and relative strength are supportive; use position sizing and risk checks."
-    elif recommendation in {"留ㅻ룄/李⑥씡?ㅽ쁽 ?곗쐞", "?쏀븳 留ㅻ룄 ?곗쐞"}:
-        final_commentary = f"{ticker} decision signal is {recommendation}. Risk or momentum conditions are weak; reduce exposure or wait for confirmation."
+    if recommendation in {"매수 우위", "약한 매수 우위"}:
+        final_commentary = (
+            f"{ticker}에 대한 현재 종합 판단은 '{recommendation}'입니다. "
+            f"추세와 상대강도에서 받쳐주는 요소가 남아 있고, {'재무지표까지 무난하게 따라오고 있어' if valuation_score > 0 else '재무지표는 추가 확인이 필요하지만'} "
+            "신규 진입을 보더라도 분할 접근 관점이 유효합니다. "
+            "다만 변동성 구간이 살아 있으면 눌림 확인 후 진입하는 편이 더 안전합니다."
+        )
+    elif recommendation in {"매도/차익실현 우위", "약한 매도 우위"}:
+        final_commentary = (
+            f"{ticker}에 대한 현재 종합 판단은 '{recommendation}'입니다. "
+            "모멘텀이나 상대강도가 충분히 살아나지 못한 상태에서 리스크 지표까지 부담을 주고 있어, "
+            "신규 매수보다는 비중 축소나 차익실현, 혹은 추세 재확인 이후 재진입을 고려하는 쪽이 합리적입니다."
+        )
     else:
-        final_commentary = f"{ticker} decision signal is {recommendation}. Signals are mixed; monitor the next earnings, trend, and relative-strength update."
+        final_commentary = (
+            f"{ticker}에 대한 현재 종합 판단은 '{recommendation}'입니다. "
+            "사는 쪽과 파는 쪽 논리가 모두 존재해 한쪽으로 강하게 기울기 어렵습니다. "
+            "지금은 성급한 추격보다 다음 실적, 추세 재정렬, 상대강도 회복 여부를 확인하면서 포지션을 유연하게 관리하는 편이 좋습니다."
+        )
 
     score_table = pd.DataFrame(
         [
@@ -1653,59 +1666,59 @@ def _run_risk_once(form: dict[str, str]) -> _RiskContext:
 def _trend_regime(close_series: pd.Series) -> str:
     clean = _clean_close_series(close_series)
     if len(clean) < 120:
-        return "?먮퀎 蹂대쪟 (insufficient history)"
+        return "판별 보류 (insufficient history)"
     sma20 = clean.rolling(20).mean().iloc[-1]
     sma60 = clean.rolling(60).mean().iloc[-1]
     sma120 = clean.rolling(120).mean().iloc[-1]
     last_price = float(clean.iloc[-1])
     if not all(np.isfinite(v) for v in [sma20, sma60, sma120, last_price]):
-        return "?먮퀎 蹂대쪟 (insufficient history)"
+        return "판별 보류 (insufficient history)"
     if last_price > sma20 > sma60 > sma120:
-        return "?곸듅 異붿꽭 ?곗쐞 (bull trend)"
+        return "상승 추세 우위 (bull trend)"
     if last_price < sma20 < sma60 < sma120:
-        return "?섎씫 異붿꽭 ?곗쐞 (bear trend)"
+        return "하락 추세 우위 (bear trend)"
     if sma20 > sma60 and last_price >= sma60:
-        return "?곸듅 ?꾪솚 ?쒕룄 (early upturn)"
+        return "상승 전환 시도 (early upturn)"
     if sma20 < sma60 and last_price <= sma60:
-        return "?섎씫 ?뺣젰 吏??(downtrend pressure)"
-    return "?쇳빀 異붿꽭 (mixed trend)"
+        return "하락 압력 지속 (downtrend pressure)"
+    return "혼합 추세 (mixed trend)"
 
 
 def _volatility_regime(ticker_daily: pd.Series) -> str:
     rolling_vol = _rolling_volatility_pct(ticker_daily, 20, 252)
     if rolling_vol.empty:
-        return "?먮퀎 蹂대쪟 (insufficient history)"
+        return "판별 보류 (insufficient history)"
     current_vol = float(rolling_vol.iloc[-1])
     median_vol = float(rolling_vol.median())
     if not np.isfinite(current_vol) or not np.isfinite(median_vol) or median_vol <= 0.0:
-        return "?먮퀎 蹂대쪟 (insufficient history)"
+        return "판별 보류 (insufficient history)"
     if current_vol >= median_vol * 1.2:
-        return "怨좊??숈꽦 (high volatility)"
+        return "고변동성 (high volatility)"
     if current_vol <= median_vol * 0.85:
-        return "?蹂?숈꽦 (calm volatility)"
-    return "以묐┰ 蹂?숈꽦 (normal volatility)"
+        return "저변동성 (calm volatility)"
+    return "중립 변동성 (normal volatility)"
 
 
 def _beta_regime(beta_market_60d: float | None) -> str:
     if beta_market_60d is None or not np.isfinite(beta_market_60d):
-        return "?먮퀎 蹂대쪟 (insufficient history)"
+        return "판별 보류 (insufficient history)"
     if beta_market_60d >= 1.2:
-        return "怨듦꺽??踰좏? (high beta)"
+        return "공격적 베타 (high beta)"
     if beta_market_60d <= 0.85:
-        return "諛⑹뼱??踰좏? (defensive beta)"
-    return "?쒖옣?좎궗 踰좏? (market-like beta)"
+        return "방어적 베타 (defensive beta)"
+    return "시장유사 베타 (market-like beta)"
 
 
 def _overall_regime_label(trend_label: str, volatility_label: str, beta_label: str) -> str:
-    if "?섎씫" in trend_label and "怨좊??숈꽦" in volatility_label:
-        return "?ㅽ듃?덉뒪 援?㈃ (risk-off stress)"
-    if "uptrend" in trend_label.lower() and "low" in volatility_label.lower() and "high" not in beta_label.lower():
-        return "?덉젙 ?곸듅 援?㈃ (stable uptrend)"
-    if "uptrend" in trend_label.lower() and "high" in beta_label.lower():
-        return "怨좊쿋? 異붿꽭 援?㈃ (high-beta trend)"
-    if "defensive" in beta_label.lower() and "low" in volatility_label.lower():
-        return "諛⑹뼱 ?덉젙 援?㈃ (defensive calm)"
-    return "?쇳빀 援?㈃ (mixed regime)"
+    if "하락" in trend_label and "고변동성" in volatility_label:
+        return "스트레스 국면 (risk-off stress)"
+    if "상승" in trend_label and "저변동성" in volatility_label and "공격적" not in beta_label:
+        return "안정 상승 국면 (stable uptrend)"
+    if "상승" in trend_label and "공격적" in beta_label:
+        return "고베타 추세 국면 (high-beta trend)"
+    if "방어적" in beta_label and "저변동성" in volatility_label:
+        return "방어 안정 국면 (defensive calm)"
+    return "혼합 국면 (mixed regime)"
 
 
 def _cumulative_residual_pct(daily_residual: pd.Series) -> pd.Series:
@@ -1778,27 +1791,27 @@ def _factor_commentary(
     parts: list[str] = []
     if beta_market_60d is not None:
         if beta_market_60d >= 1.2:
-            parts.append(f"{ticker}??理쒓렐 60嫄곕옒??湲곗??쇰줈 ?쒖옣蹂대떎 ????쑝濡?諛섏쓳?섎뒗 怨좊쿋?(high beta) ?깃꺽??媛뺥빀?덈떎.")
+            parts.append(f"{ticker}는 최근 60거래일 기준으로 시장보다 큰 폭으로 반응하는 고베타(high beta) 성격이 강합니다.")
         elif beta_market_60d <= 0.85:
-            parts.append(f"{ticker}??理쒓렐 60嫄곕옒??湲곗??쇰줈 ?쒖옣蹂대떎 ???붾뱾由щ뒗 諛⑹뼱??defensive) 諛섏쓳??蹂댁??듬땲??")
+            parts.append(f"{ticker}는 최근 60거래일 기준으로 시장보다 덜 흔들리는 방어형(defensive) 반응을 보였습니다.")
         else:
-            parts.append(f"{ticker}??理쒓렐 60嫄곕옒??踰좏?(beta)???쒖옣 ?됯퇏??媛源뚯썙, S&P 500怨?鍮꾧탳??鍮꾩듂??誘쇨컧?꾨줈 ?吏곸??듬땲??")
+            parts.append(f"{ticker}의 최근 60거래일 베타(beta)는 시장 평균에 가까워, S&P 500과 비교적 비슷한 민감도로 움직였습니다.")
     if corr_market_60d is not None:
         if corr_market_60d >= 0.8:
-            parts.append("?쒖옣怨쇱쓽 ?숉뻾??correlation)???믪븘 媛쒕퀎 醫낅ぉ ?댁뒋蹂대떎 ?쒖옣 ?붿씤???ㅻ챸?μ씠 ??援ш컙?쇰줈 ?쏀옓?덈떎.")
+            parts.append("시장과의 동행성(correlation)이 높아 개별 종목 이슈보다 시장 요인의 설명력이 큰 구간으로 읽힙니다.")
         elif corr_market_60d <= 0.45:
-            parts.append("?쒖옣怨쇱쓽 ?숉뻾??correlation)???믪? ?딆븘 理쒓렐?먮뒗 醫낅ぉ 怨좎쑀 ?붿씤(idiosyncratic factor)??鍮꾩쨷???곷??곸쑝濡?而?蹂댁엯?덈떎.")
+            parts.append("시장과의 동행성(correlation)이 높지 않아 최근에는 종목 고유 요인(idiosyncratic factor)의 비중이 상대적으로 커 보입니다.")
     if residual_market_20d is not None:
         if residual_market_20d > 0.03:
-            parts.append("理쒓렐 20嫄곕옒???붿감?섏씡瑜?residual return)???뚮윭?ㅼ뿬???쒖옣 怨듯넻 ?붿씤???쒓굅???ㅼ뿉??珥덇낵?깃낵媛 ?⑥븯?듬땲??")
+            parts.append("최근 20거래일 잔차수익률(residual return)이 플러스여서 시장 공통 요인을 제거한 뒤에도 초과성과가 남았습니다.")
         elif residual_market_20d < -0.03:
-            parts.append("理쒓렐 20嫄곕옒???붿감?섏씡瑜?residual return)??留덉씠?덉뒪?ъ꽌 ?쒖옣???곕씪媛?遺遺꾩쓣 ?쒖쇅?섎㈃ 醫낅ぉ 怨좎쑀 ?깃낵???쏀뻽?듬땲??")
+            parts.append("최근 20거래일 잔차수익률(residual return)이 마이너스여서 시장을 따라간 부분을 제외하면 종목 고유 성과는 약했습니다.")
     if residual_sector_20d is not None:
         if residual_sector_20d > 0.02:
-            parts.append(f"{sector} ?뱁꽣 ?대? 鍮꾧탳?먯꽌???붿감?깃낵媛 ?묓샇?? 理쒓렐?먮뒗 ?뱁꽣 ??쒖＜蹂대떎 ?곷??곸쑝濡?媛뺥븳 ?몄뿉 媛源앹뒿?덈떎.")
+            parts.append(f"{sector} 섹터 내부 비교에서도 잔차성과가 양호해, 최근에는 섹터 대표주보다 상대적으로 강한 편에 가깝습니다.")
         elif residual_sector_20d < -0.02:
-            parts.append(f"{sector} ?뱁꽣 ?대? 鍮꾧탳?먯꽌???꾩쭅 醫낅ぉ 怨좎쑀 ?깃낵媛 ?뱁꽣 ?됯퇏蹂대떎 ?쏀븳 ?몄엯?덈떎.")
-    parts.append(f"醫낇빀 援?㈃(regime)? ?꾩옱 {regime_overall}?쇰줈 ?붿빟?⑸땲??")
+            parts.append(f"{sector} 섹터 내부 비교에서는 아직 종목 고유 성과가 섹터 평균보다 약한 편입니다.")
+    parts.append(f"종합 국면(regime)은 현재 {regime_overall}으로 요약됩니다.")
     return " ".join(parts)
 
 
@@ -1896,44 +1909,68 @@ def _run_factor_once(form: dict[str, str]) -> _FactorContext:
 
     summary_table = pd.DataFrame(
         [
-            {"Metric": "60D Beta vs S&P 500", "Value": _format_metric(beta_market_60d, 2) if beta_market_60d is not None else "-", "Interpretation": "Market sensitivity over the latest 60 trading days."},
-            {"Metric": "60D Beta vs Sector", "Value": _format_metric(beta_sector_60d, 2) if beta_sector_60d is not None else "-", "Interpretation": "Sector-relative sensitivity over the latest 60 trading days."},
-            {"Metric": "60D Corr vs S&P 500", "Value": _format_metric(corr_market_60d, 2) if corr_market_60d is not None else "-", "Interpretation": "Co-movement with the broad market."},
-            {"Metric": "60D Corr vs Sector", "Value": _format_metric(corr_sector_60d, 2) if corr_sector_60d is not None else "-", "Interpretation": "Co-movement with the sector basket."},
-            {"Metric": "20D Residual Return vs S&P 500", "Value": _format_pct(residual_market_20d), "Interpretation": "Recent stock-specific return after removing broad market movement."},
-            {"Metric": "20D Residual Return vs Sector", "Value": _format_pct(residual_sector_20d), "Interpretation": "Recent stock-specific return after removing sector movement."},
-            {"Metric": "Trend Regime", "Value": regime_trend, "Interpretation": "Moving-average based trend context."},
-            {"Metric": "Volatility Regime", "Value": regime_volatility, "Interpretation": "Recent volatility context."},
-            {"Metric": "Beta Regime", "Value": regime_beta, "Interpretation": "Market sensitivity regime."},
-            {"Metric": "Overall Regime", "Value": regime_overall, "Interpretation": "Combined trend, volatility, and beta context."},
+            {
+                "지표": "60D 베타 vs S&P 500",
+                "현재값": _format_metric(beta_market_60d, 2) if beta_market_60d is not None else "-",
+                "핵심 해석": "1보다 크면 시장보다 민감, 1보다 작으면 방어적입니다.",
+            },
+            {
+                "지표": "60D 베타 vs 섹터",
+                "현재값": _format_metric(beta_sector_60d, 2) if beta_sector_60d is not None else "-",
+                "핵심 해석": "섹터 내부에서 얼마나 공격적 또는 방어적인지 보여줍니다.",
+            },
+            {
+                "지표": "60D 상관 vs S&P 500",
+                "현재값": _format_metric(corr_market_60d, 2) if corr_market_60d is not None else "-",
+                "핵심 해석": "높을수록 시장 요인 설명력이 큽니다.",
+            },
+            {
+                "지표": "60D 상관 vs 섹터",
+                "현재값": _format_metric(corr_sector_60d, 2) if corr_sector_60d is not None else "-",
+                "핵심 해석": "높을수록 섹터 공통 요인과 함께 움직입니다.",
+            },
+            {
+                "지표": "20D 잔차수익률 vs S&P 500",
+                "현재값": _format_pct(residual_market_20d),
+                "핵심 해석": "시장 공통 움직임을 제거한 뒤 남는 종목 고유 성과입니다.",
+            },
+            {
+                "지표": "20D 잔차수익률 vs 섹터",
+                "현재값": _format_pct(residual_sector_20d),
+                "핵심 해석": "섹터 내부 상대성과를 간단히 점검하는 값입니다.",
+            },
+            {"지표": "추세 국면 (Trend Regime)", "현재값": regime_trend, "핵심 해석": "이동평균 배열과 현재 가격 위치를 함께 읽습니다."},
+            {"지표": "변동성 국면 (Volatility Regime)", "현재값": regime_volatility, "핵심 해석": "현재 20일 변동성이 자신의 최근 1년 중앙값 대비 어느 수준인지 봅니다."},
+            {"지표": "베타 국면 (Beta Regime)", "현재값": regime_beta, "핵심 해석": "시장 민감도의 성격을 요약한 라벨입니다."},
+            {"지표": "종합 국면 (Overall Regime)", "현재값": regime_overall, "핵심 해석": "추세, 변동성, 베타를 합친 실험적 요약입니다."},
         ]
     )
 
     interpretation_table = pd.DataFrame(
         [
             {
-                "媛쒕뀗": "踰좏? (beta)",
-                "???섏씠吏?먯꽌???섎?": "理쒓렐 60嫄곕옒???숈븞 ?쒖옣 ?먮뒗 ?뱁꽣媛 1 ?吏곸씪 ??醫낅ぉ???쇰쭏???ш쾶 諛섏쓳?덈뒗吏瑜?遊낅땲??",
+                "개념": "베타 (beta)",
+                "이 페이지에서의 의미": "최근 60거래일 동안 시장 또는 섹터가 1 움직일 때 종목이 얼마나 크게 반응했는지를 봅니다.",
             },
             {
-                "媛쒕뀗": "?곴?怨꾩닔 (correlation)",
-                "???섏씠吏?먯꽌???섎?": "媛숈? 諛⑺뼢?쇰줈 ?④퍡 ?吏곸씠???뺣룄?낅땲?? ?믪쓣?섎줉 怨듯넻 ?붿씤???곹뼢???쎈땲??",
+                "개념": "상관계수 (correlation)",
+                "이 페이지에서의 의미": "같은 방향으로 함께 움직이는 정도입니다. 높을수록 공통 요인의 영향이 큽니다.",
             },
             {
-                "媛쒕뀗": "?붿감?섏씡瑜?(residual return)",
-                "???섏씠吏?먯꽌???섎?": "?쒖옣/?뱁꽣 ?ㅻ챸遺꾩쓣 ?쒖쇅?????⑤뒗 醫낅ぉ 怨좎쑀 ?섏씡瑜좎엯?덈떎. ?뚮윭?ㅻ㈃ ?곷? 珥덇낵?깃낵, 留덉씠?덉뒪硫??곷? ?댁쐞濡??쎌쓣 ???덉뒿?덈떎.",
+                "개념": "잔차수익률 (residual return)",
+                "이 페이지에서의 의미": "시장/섹터 설명분을 제외한 뒤 남는 종목 고유 수익률입니다. 플러스면 상대 초과성과, 마이너스면 상대 열위로 읽을 수 있습니다.",
             },
             {
-                "媛쒕뀗": "異붿꽭 援?㈃ (trend regime)",
-                "???섏씠吏?먯꽌???섎?": "20, 60, 120???대룞?됯퇏怨??꾩옱 媛寃⑹쓽 ?곷? ?꾩튂濡?諛⑺뼢?깆쓣 ?붿빟?⑸땲??",
+                "개념": "추세 국면 (trend regime)",
+                "이 페이지에서의 의미": "20, 60, 120일 이동평균과 현재 가격의 상대 위치로 방향성을 요약합니다.",
             },
             {
-                "媛쒕뀗": "蹂?숈꽦 援?㈃ (volatility regime)",
-                "???섏씠吏?먯꽌???섎?": "?꾩옱 蹂?숈꽦???됱냼蹂대떎 ?④굅?댁?, 李⑤텇?쒖?瑜?鍮좊Ⅴ寃?蹂댁뿬以띾땲??",
+                "개념": "변동성 국면 (volatility regime)",
+                "이 페이지에서의 의미": "현재 변동성이 평소보다 뜨거운지, 차분한지를 빠르게 보여줍니다.",
             },
             {
-                "媛쒕뀗": "醫낇빀 援?㈃ (overall regime)",
-                "???섏씠吏?먯꽌???섎?": "異붿꽭, 蹂?숈꽦, 踰좏?瑜??④퍡 臾띠뼱 ?꾩옱 ?섍꼍???쎄린 ?ъ슫 臾몄옣?쇰줈 ?뺤텞???ㅽ뿕???쇰꺼?낅땲??",
+                "개념": "종합 국면 (overall regime)",
+                "이 페이지에서의 의미": "추세, 변동성, 베타를 함께 묶어 현재 환경을 읽기 쉬운 문장으로 압축한 실험적 라벨입니다.",
             },
         ]
     )
@@ -2098,7 +2135,7 @@ def _stacked_table_html(
     pinned_columns: list[str] | None = None,
     max_tables: int = 3,
     min_chunk_columns: int = 4,
-    section_title: str = "Table",
+    section_title: str = "표",
 ) -> str:
     head = df.head(max_rows).copy()
     if head.empty:
@@ -2509,40 +2546,40 @@ def _walk_forward_commentary(
 
     if hit_rate is not None:
         if hit_rate >= 0.58:
-            parts.append("諛⑺뼢???곸쨷瑜좎씠 58% ?댁긽?대㈃ ?⑥닚???숈쟾?섏?湲곕낫???좎쓽誘명븳 諛⑺뼢???곗쐞瑜??쒖궗?⑸땲??")
+            parts.append("방향성 적중률이 58% 이상이면 단순한 동전던지기보다 유의미한 방향성 우위를 시사합니다.")
         elif hit_rate >= 0.52:
-            parts.append("諛⑺뼢???곸쨷瑜좎? ?쏀븳 ?곗쐞 援ш컙??媛源뚯썙 蹂댁씠吏留? ?꾩쭅 媛뺥븳 ?좏샇濡?蹂닿린???대쫭?덈떎.")
+            parts.append("방향성 적중률은 약한 우위 구간에 가까워 보이지만, 아직 강한 신호로 보기는 이릅니다.")
         else:
-            parts.append("諛⑺뼢???곸쨷瑜좎씠 50% ?덊뙉?대㈃ ?꾩옱 ?덉륫 ?좏샇??諛⑺뼢 ?먮퀎??痢〓㈃?먯꽌 蹂댁닔?곸쑝濡??댁꽍?섎뒗 ?몄씠 醫뗭뒿?덈떎.")
+            parts.append("방향성 적중률이 50% 안팎이면 현재 예측 신호는 방향 판별력 측면에서 보수적으로 해석하는 편이 좋습니다.")
 
     if skill_vs_naive is not None:
         if skill_vs_naive > 0.1:
-            parts.append("naive zero-return 湲곗?蹂대떎 ?ㅼ감媛 ??븘, 理쒖냼??理쒓렐 援ш컙?먯꽌???덉륫 紐⑤뜽???⑥닚 臾댁삁痢〓낫???レ뒿?덈떎.")
+            parts.append("naive zero-return 기준보다 오차가 낮아, 최소한 최근 구간에서는 예측 모델이 단순 무예측보다 낫습니다.")
         elif skill_vs_naive > 0.0:
-            parts.append("naive zero-return 湲곗?蹂대떎 ?쎄컙 ?レ?留? 媛쒖꽑 ??? ?꾩쭅 ?쒗븳?곸엯?덈떎.")
+            parts.append("naive zero-return 기준보다 약간 낫지만, 개선 폭은 아직 제한적입니다.")
         else:
-            parts.append("naive zero-return 湲곗?蹂대떎 媛쒖꽑???녾굅???ㅽ엳???ㅼ쿂?? 吏湲덉? ?덉륫 異쒕젰蹂대떎 由ъ뒪??愿由?李멸퀬移섎줈 蹂대뒗 ?몄씠 ?덉쟾?⑸땲??")
+            parts.append("naive zero-return 기준보다 개선이 없거나 오히려 뒤처져, 지금은 예측 출력보다 리스크 관리 참고치로 보는 편이 안전합니다.")
 
     if bias_return is not None:
         if bias_return >= 0.01:
-            parts.append("?됯퇏 ?명뼢???뚮윭?ㅻ㈃ 理쒓렐?먮뒗 紐⑤뜽???ㅼ젣蹂대떎 ?숆??곸쑝濡??덉륫?섎뒗 寃쏀뼢???덉뿀?듬땲??")
+            parts.append("평균 편향이 플러스면 최근에는 모델이 실제보다 낙관적으로 예측하는 경향이 있었습니다.")
         elif bias_return <= -0.01:
-            parts.append("?됯퇏 ?명뼢??留덉씠?덉뒪硫?理쒓렐?먮뒗 紐⑤뜽???ㅼ젣蹂대떎 蹂댁닔?곸쑝濡??덉륫?섎뒗 寃쏀뼢???덉뿀?듬땲??")
+            parts.append("평균 편향이 마이너스면 최근에는 모델이 실제보다 보수적으로 예측하는 경향이 있었습니다.")
         else:
-            parts.append("?됯퇏 ?명뼢? ?ъ? ?딆븘 ?숆?/鍮꾧? ?쒖そ?쇰줈 移섏슦移??덉륫 ?듦?? ?먮뱶?ъ?吏 ?딆뒿?덈떎.")
+            parts.append("평균 편향은 크지 않아 낙관/비관 한쪽으로 치우친 예측 습관은 두드러지지 않습니다.")
 
     if corr is not None:
         if corr >= 0.35:
-            parts.append("?덉륫 ?섏씡瑜좉낵 ?ㅽ쁽 ?섏씡瑜좎쓽 ?곴???鍮꾧탳???믪븘, 媛뺤빟??援щ텇?섎뒗 ?λ젰? ?대뒓 ?뺣룄 ?좎??섎뒗 ?몄엯?덈떎.")
+            parts.append("예측 수익률과 실현 수익률의 상관이 비교적 높아, 강약을 구분하는 능력은 어느 정도 유지되는 편입니다.")
         elif corr >= 0.15:
-            parts.append("?덉륫 ?섏씡瑜좉낵 ?ㅽ쁽 ?섏씡瑜좎쓽 ?곴?? ?쏀븳 ?몄씠?? ?쒖쐞 ?좏샇濡쒕뒗 ?쒗븳?곸쑝濡쒕쭔 ?쒖슜?섎뒗 ?몄씠 醫뗭뒿?덈떎.")
+            parts.append("예측 수익률과 실현 수익률의 상관은 약한 편이라, 순위 신호로는 제한적으로만 활용하는 편이 좋습니다.")
         else:
-            parts.append("?덉륫 ?섏씡瑜좉낵 ?ㅽ쁽 ?섏씡瑜좎쓽 ?곴?????쑝硫? ?レ옄 ?ш린蹂대떎 諛⑺뼢?깆씠??由ъ뒪???쒕룄 以묒떖?쇰줈 ?쎈뒗 ?몄씠 ???レ뒿?덈떎.")
+            parts.append("예측 수익률과 실현 수익률의 상관이 낮으면, 숫자 크기보다 방향성이나 리스크 한도 중심으로 읽는 편이 더 낫습니다.")
 
     if mae_return is not None and rmse_return is not None:
         parts.append(
-            f"?꾩옱 ?됯퇏 ?덈??ㅼ감??{_format_pct(mae_return)}, RMSE??{_format_pct(rmse_return)} ?섏??쇰줈, "
-            "媛쒕퀎 ?덉륫媛??먯껜蹂대떎???좏샇???쇨??깃낵 ?명뼢???④퍡 蹂대뒗 寃껋씠 以묒슂?⑸땲??"
+            f"현재 평균 절대오차는 {_format_pct(mae_return)}, RMSE는 {_format_pct(rmse_return)} 수준으로, "
+            "개별 예측값 자체보다는 신호의 일관성과 편향을 함께 보는 것이 중요합니다."
         )
 
     return " ".join(parts)
@@ -2808,14 +2845,46 @@ def _run_walk_forward_validation_once(form: dict[str, str]) -> _WalkForwardConte
 
     interpretation_table = pd.DataFrame(
         [
-            {"Metric": "Directional Hit Rate", "Value": _format_pct(direction_hit_rate), "Interpretation": "Hit rate based on predicted return direction."},
-            {"Metric": "Classification Hit Rate", "Value": _format_pct(classification_hit_rate), "Interpretation": "Separate up/down classifier hit rate."},
-            {"Metric": "No-Trade Coverage", "Value": _format_pct(trade_coverage_rate), "Interpretation": "Share of cases passing the trade filter."},
-            {"Metric": "Traded Hit Rate", "Value": _format_pct(trade_hit_rate) if trade_hit_rate is not None else "-", "Interpretation": "Hit rate on traded signals only."},
-            {"Metric": "MAE", "Value": _format_pct(mae_return), "Interpretation": "Mean absolute error of forward return forecasts."},
-            {"Metric": "Skill vs Naive", "Value": _format_pct(skill_vs_naive) if skill_vs_naive is not None else "-", "Interpretation": "Error improvement versus a zero-return baseline."},
-            {"Metric": "Mean Bias", "Value": _format_pct(bias_return), "Interpretation": "Average signed forecast error."},
-            {"Metric": "Prediction/Realization Correlation", "Value": _format_metric(return_correlation, 3) if return_correlation is not None else "-", "Interpretation": "Correlation between forecast and realized returns."},
+            {
+                "지표": "방향성 적중률 (Directional Hit Rate)",
+                "현재값": _format_pct(direction_hit_rate),
+                "해석 포인트": "회귀 예측값의 부호만 봤을 때의 방향 적중률입니다. 대략 55%를 넘기면 방향성 우위가 있다고 볼 여지가 커집니다.",
+            },
+            {
+                "지표": "분류 적중률 (Classification Hit Rate)",
+                "현재값": _format_pct(classification_hit_rate),
+                "해석 포인트": "상승/하락 분류기(classifier)가 별도로 방향을 얼마나 잘 골랐는지 보여줍니다. 회귀 적중률과 비교해 개선 여지를 볼 수 있습니다.",
+            },
+            {
+                "지표": "거래 커버리지 (No-Trade Coverage)",
+                "현재값": _format_pct(trade_coverage_rate),
+                "해석 포인트": "no-trade 필터를 통과해 실제로 신호를 낸 비중입니다. 낮을수록 보수적이고, 높을수록 더 자주 거래합니다.",
+            },
+            {
+                "지표": "선별 거래 적중률 (Traded Hit Rate)",
+                "현재값": _format_pct(trade_hit_rate) if trade_hit_rate is not None else "-",
+                "해석 포인트": "필터를 통과한 구간만 봤을 때의 적중률입니다. coverage와 함께 읽어야 의미가 선명해집니다.",
+            },
+            {
+                "지표": "평균절대오차 (MAE)",
+                "현재값": _format_pct(mae_return),
+                "해석 포인트": "낮을수록 좋습니다. 예측 선행수익률과 실제 선행수익률 사이의 평균 간격입니다.",
+            },
+            {
+                "지표": "나이브 대비 스킬 (Skill vs Naive)",
+                "현재값": _format_pct(skill_vs_naive) if skill_vs_naive is not None else "-",
+                "해석 포인트": "플러스면 0% 수익률을 찍는 단순 기준보다 평균절대오차 기준으로 더 낫다는 뜻입니다.",
+            },
+            {
+                "지표": "평균 편향 (Mean Bias)",
+                "현재값": _format_pct(bias_return),
+                "해석 포인트": "플러스면 예측이 대체로 낙관적이었고, 마이너스면 보수적으로 치우친 편입니다.",
+            },
+            {
+                "지표": "예측/실현 상관 (Prediction/Realization Correlation)",
+                "현재값": _format_metric(return_correlation, 3) if return_correlation is not None else "-",
+                "해석 포인트": "높을수록 강한 구간과 약한 구간을 상대적으로 더 잘 구분했다는 뜻입니다.",
+            },
         ]
     )
 
@@ -3053,6 +3122,15 @@ _LOCAL_COMPANY_ALIAS = {
     "google": "GOOGL",
     "meta": "META",
     "netflix": "NFLX",
+    "애플": "AAPL",
+    "마이크로소프트": "MSFT",
+    "엔비디아": "NVDA",
+    "아마존": "AMZN",
+    "테슬라": "TSLA",
+    "구글": "GOOGL",
+    "알파벳": "GOOGL",
+    "메타": "META",
+    "넷플릭스": "NFLX",
 }
 
 
@@ -3662,63 +3740,42 @@ def _build_financial_context_yfinance(
     overview_fallback: dict[str, object] | None = None,
     fmp_api_key: str | None = None,
 ) -> _FinancialContext:
+    if yf is None:
+        raise ValueError(
+            "yfinance is not installed. Install yfinance to load online financial data."
+        )
+
     verify_value = _request_verify_value(ca_bundle_path=ca_bundle_path, insecure_ssl=insecure_ssl)
 
-    info: dict[str, object] = {}
-    info_error: str | None = None
-    fast_info: dict[str, object] = {}
-    price_history = pd.DataFrame()
-    income = pd.DataFrame()
-    balance = pd.DataFrame()
-    cashflow = pd.DataFrame()
+    yf_session = _build_yfinance_session(ca_bundle=ca_bundle_path, insecure_ssl=insecure_ssl)
+    ticker_obj = yf.Ticker(ticker, session=yf_session)
 
-    if yf is None:
-        info_error = "yfinance unavailable; using SEC/FMP/shared-data fallback"
-    else:
-        yf_session = _build_yfinance_session(ca_bundle=ca_bundle_path, insecure_ssl=insecure_ssl)
-        ticker_obj = yf.Ticker(ticker, session=yf_session)
+    try:
+        info = ticker_obj.info or {}
+        info_error: str | None = None
+    except Exception as exc:
+        info = {}
+        info_error = _short_error_message(exc)
 
+    def _safe_statement_df(attr_name: str) -> pd.DataFrame:
         try:
-            info = ticker_obj.info or {}
-            info_error = None
-        except Exception as exc:
-            info = {}
-            info_error = _short_error_message(exc)
-
-        def _safe_statement_df(attr_name: str) -> pd.DataFrame:
-            try:
-                return _normalize_statement_df(getattr(ticker_obj, attr_name, pd.DataFrame()))
-            except Exception:
-                return pd.DataFrame()
-
-        income = _safe_statement_df("income_stmt")
-        if income.empty:
-            income = _safe_statement_df("financials")
-        if income.empty:
-            income = _safe_statement_df("quarterly_income_stmt")
-
-        balance = _safe_statement_df("balance_sheet")
-        if balance.empty:
-            balance = _safe_statement_df("quarterly_balance_sheet")
-
-        cashflow = _safe_statement_df("cashflow")
-        if cashflow.empty:
-            cashflow = _safe_statement_df("quarterly_cashflow")
-
-        try:
-            fast_info = ticker_obj.fast_info or {}
+            return _normalize_statement_df(getattr(ticker_obj, attr_name, pd.DataFrame()))
         except Exception:
-            fast_info = {}
-        if fast_info and not isinstance(fast_info, dict):
-            try:
-                fast_info = dict(fast_info)
-            except Exception:
-                fast_info = {}
+            return pd.DataFrame()
 
-        try:
-            price_history = ticker_obj.history(period="1y", auto_adjust=False)
-        except Exception:
-            price_history = pd.DataFrame()
+    income = _safe_statement_df("income_stmt")
+    if income.empty:
+        income = _safe_statement_df("financials")
+    if income.empty:
+        income = _safe_statement_df("quarterly_income_stmt")
+
+    balance = _safe_statement_df("balance_sheet")
+    if balance.empty:
+        balance = _safe_statement_df("quarterly_balance_sheet")
+
+    cashflow = _safe_statement_df("cashflow")
+    if cashflow.empty:
+        cashflow = _safe_statement_df("quarterly_cashflow")
 
     sec_company_name = ""
     used_sec_fallback = False
@@ -3737,7 +3794,21 @@ def _build_financial_context_yfinance(
 
     overview = overview_fallback or {}
 
+    try:
+        fast_info = ticker_obj.fast_info or {}
+    except Exception:
+        fast_info = {}
+    if fast_info and not isinstance(fast_info, dict):
+        try:
+            fast_info = dict(fast_info)
+        except Exception:
+            fast_info = {}
+
     used_common_price_loader = False
+    try:
+        price_history = ticker_obj.history(period="1y", auto_adjust=False)
+    except Exception:
+        price_history = pd.DataFrame()
 
     close_series = price_history.get("Close") if isinstance(price_history, pd.DataFrame) else None
     clean_close = pd.Series(dtype=float)
@@ -4078,51 +4149,42 @@ def _nav(active: str, *, enable_technical_page: bool = False, is_sub_page: bool 
     if is_sub_page: # Sub-pages should not render their own navigation
         return ""
     links = [
-        f'<a class="{c1}" href="/forecast">Stock Forecast</a>',
-        f'<a class="{c2}" href="/page2">Financials</a>',
+        f'<a class="{c1}" href="/forecast">주가 예측</a>',
+        f'<a class="{c2}" href="/page2">재무제표·밸류에이션</a>',
     ]
     if enable_technical_page:
         links.extend(
             [
-                f'<a class="{c3}" href="/page3">Technical</a>',
-                f'<a class="{c4}" href="/page4">Returns</a>',
-                f'<a class="{c5}" href="/page5">Risk</a>',
-                f'<a class="{cf}" href="/factor-regime">Factor Regime</a>',
-                f'<a class="{c6}" href="/page6">Decision</a>',
-                f'<a class="{c8}" href="/page8">Walk Forward</a>',
+                f'<a class="{c3}" href="/page3">기술적 분석</a>',
+                f'<a class="{c4}" href="/page4">수익률 비교</a>',
+                f'<a class="{c5}" href="/page5">리스크 대시보드</a>',
+                f'<a class="{cf}" href="/factor-regime">팩터·레짐 랩</a>',
+                f'<a class="{c6}" href="/page6">의사결정 대시보드</a>',
+                f'<a class="{c8}" href="/page8">워크포워드 검증</a>',
             ]
         )
-    links.append('<a class="" href="/macro/overview">Macro</a>')
+    if os.getenv("ENABLE_MACRO", "").strip().lower() in {"1", "true", "yes", "on"}:
+        links.append('<a class="" href="/macro/overview">거시분석</a>')
     return '<div class="nav">' + "".join(links) + "</div>" + sync_script
 
 
 def _base_css(is_sub_page: bool = False) -> str:
     return """
     :root {
-      --bg: #f3f5f7;
-      --card: #ffffff;
-      --line: #d4dde8;
-      --text: #1f2937;
-      --muted: #5f6b7a;
-      --brand: #0f4c81;
-      --ok-bg: #e8f7ee;
-      --ok-line: #99d5af;
-      --err-bg: #fff2f2;
-      --err-line: #efadad;
+      """ + _shared_theme_root_css() + """
     }
     .latest-inline {
       margin-top: 8px; padding: 8px 10px; border-radius: 8px;
       background: #eef4fb; border: 1px solid #c7d9ee; color: #24425f; font-size: 12px; line-height: 1.45;
     }
-    * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", "Noto Sans KR", sans-serif; }
-    .wrap { width: 100%; max-width: 1460px; margin: 0 auto; padding: 20px; }
+    .wrap { max-width: 1460px; margin: 0 auto; padding: 20px; }
     h1 { margin: 0 0 10px; font-size: 24px; }
     .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
     .page-head h1 { margin: 0; }
     .page-credit { color: var(--muted); font-size: 11px; white-space: nowrap; padding-top: 4px; }
     .sub { color: var(--muted); margin-bottom: 14px; }
-    .card { min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
     .nav { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
     .nav a { text-decoration: none; color: var(--brand); border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 7px 12px; font-size: 13px; }
     .nav a.active { background: var(--brand); color: #fff; border-color: var(--brand); }
@@ -4139,21 +4201,21 @@ def _base_css(is_sub_page: bool = False) -> str:
     .notice.ok { background: var(--ok-bg); border: 1px solid var(--ok-line); }
     .notice.err { background: var(--err-bg); border: 1px solid var(--err-line); }
     .metrics { margin-top: 12px; display: grid; grid-template-columns: repeat(4, minmax(170px, 1fr)); gap: 10px; }
-    .metric { min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+    .metric { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
     .metric span { display: block; font-size: 12px; color: var(--muted); }
     .metric strong { display: block; margin-top: 5px; font-size: 17px; }
-    .charts { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .charts { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(290px, 1fr)); gap: 10px; }
     .charts img { width: 100%; height: auto; }
-    .chart-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-    .chart-card { min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 10px; }
+    .chart-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(280px, 1fr)); gap: 10px; }
+    .chart-card { border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 10px; }
     .chart-card h4 { margin: 0 0 8px 0; }
     .chart-card img { width: 100%; height: auto; border-radius: 6px; }
     .chart-desc { margin: 8px 0 0 0; font-size: 12px; color: var(--muted); line-height: 1.4; }
     .tables { margin-top: 12px; display: grid; grid-template-columns: 1fr; gap: 10px; }
-    .table-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .table-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(320px, 1fr)); gap: 10px; }
     .table-wrap { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .data-table { width: 100%; min-width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.45; }
-    .data-table th, .data-table td { border: 1px solid var(--line); padding: 8px; text-align: left; vertical-align: top; white-space: normal; overflow-wrap: anywhere; word-break: normal; }
+    .data-table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.45; }
+    .data-table th, .data-table td { border: 1px solid var(--line); padding: 8px; text-align: left; vertical-align: top; white-space: normal; overflow-wrap: break-word; word-break: keep-all; }
     .stacked-table-group { display: grid; gap: 12px; }
     .stacked-table-block h4 { margin: 4px 0 8px; font-size: 13px; color: var(--muted); }
     pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
@@ -4167,11 +4229,27 @@ def _base_css(is_sub_page: bool = False) -> str:
     """
 
 
+def _shared_theme_root_css() -> str:
+    return """
+      --bg: #f3f5f7;
+      --card: #ffffff;
+      --line: #d4dde8;
+      --text: #1f2937;
+      --muted: #5f6b7a;
+      --brand: #0f4c81;
+      --accent: #0f4c81;
+      --ok-bg: #e8f7ee;
+      --ok-line: #99d5af;
+      --err-bg: #fff2f2;
+      --err-line: #efadad;
+    """.strip()
+
+
 def _page_head(title: str, is_sub_page: bool = False) -> str:
     return (
         "<div class=\"page-head\">"
         f"<h1>{html.escape(title)}</h1>"
-        "<div class=\"page-credit\">Keumj ?쒖옉</div>"
+        "<div class=\"page-credit\">Keumj 제작</div>"
         "</div>"
     )
 
@@ -4183,9 +4261,9 @@ def _html_page(
     error: str | None,
     ticker_note: str | None = None,
     ticker_note_error: bool = False,
+    is_sub_page: bool = False,
     enable_technical_page: bool = False,
 ) -> str:
-    is_sub_page = False
     use_sample_checked = "checked" if form.get("use_sample", "") == "on" else ""
     auto_save_checked = "checked" if form.get("auto_save", "on") == "on" else ""
     insecure_ssl_checked = "checked" if form.get("insecure_ssl", "") == "on" else ""
@@ -4202,7 +4280,7 @@ def _html_page(
 
     info_html = ""
     if ctx is not None and ctx.saved_dir:
-        info_html += f'<div class="notice ok">?덉륫 寃곌낵瑜?<code>{html.escape(ctx.saved_dir)}</code>????ν뻽?듬땲??</div>'
+        info_html += f'<div class="notice ok">예측 결과를 <code>{html.escape(ctx.saved_dir)}</code>에 저장했습니다.</div>'
     if error:
         info_html += f'<div class="notice err"><pre>{html.escape(error)}</pre></div>'
     if ticker_note:
@@ -4211,8 +4289,8 @@ def _html_page(
     if ctx is None and not error:
         info_html += (
             "<div class=\"notice ok\">"
-            "二쇨? ?덉륫 ?섏씠吏???좏깮???곗빱 ?먮뒗 ?좏깮 ?낅젰??濡쒖뺄 媛寃?CSV瑜?諛뷀깢?쇰줈 "
-            "10?곸뾽???숈긽釉??덉륫???섑뻾?⑸땲?? ?ㅽ봽?쇱씤 ?곕え媛 ?꾩슂???뚮쭔 ?섑뵆 ?곗씠?곕? ?ъ슜??二쇱꽭??"
+            "주가 예측 페이지는 선택한 티커 또는 선택 입력인 로컬 가격 CSV를 바탕으로 "
+            "10영업일 앙상블 예측을 수행합니다. 오프라인 데모가 필요할 때만 샘플 데이터를 사용해 주세요."
             "</div>"
         )
 
@@ -4223,25 +4301,25 @@ def _html_page(
         summary = ctx.result.summary.iloc[0]
         metric_html = f"""
         <div class="metrics">
-          <div class="metric"><span>?곗빱</span><strong>{html.escape(str(summary.get("ticker", "-")))}</strong></div>
-          <div class="metric"><span>湲곗???/span><strong>{html.escape(str(summary.get("as_of_date", "-")))}</strong></div>
-          <div class="metric"><span>?덉륫??/span><strong>{html.escape(str(summary.get("forecast_date", "-")))}</strong></div>
-          <div class="metric"><span>?덉륫 湲곌컙(?곸뾽??</span><strong>{_format_metric(summary.get("horizon_days"), 0)}</strong></div>
-          <div class="metric"><span>理쒓렐 醫낃?</span><strong>{_format_metric(summary.get("last_close"), 2)}</strong></div>
-          <div class="metric"><span>?덉륫 二쇨?</span><strong>{_format_metric(summary.get("predicted_price"), 2)}</strong></div>
-          <div class="metric"><span>湲곕? ?섏씡瑜?/span><strong>{_format_metric(summary.get("expected_return_pct"), 2)}%</strong></div>
-          <div class="metric"><span>?곸듅 ?뺣쪧</span><strong>{_format_metric(summary.get("direction_prob_up_pct"), 2)}%</strong></div>
-          <div class="metric"><span>諛⑺뼢 ?좊ː??/span><strong>{_format_metric(summary.get("direction_confidence_pct"), 2)}%</strong></div>
-          <div class="metric"><span>?먮떒 ?좏샇</span><strong>{html.escape(str(summary.get("direction_signal", "-")))}</strong></div>
-          <div class="metric"><span>嫄곕옒 ?꾪꽣</span><strong>{html.escape(str(summary.get("trade_filter", "-")))}</strong></div>
-          <div class="metric"><span>?숈긽釉?濡쒓렇?섏씡瑜?/span><strong>{_format_metric(summary.get("ensemble_predicted_log_return"), 5)}</strong></div>
+          <div class="metric"><span>티커</span><strong>{html.escape(str(summary.get("ticker", "-")))}</strong></div>
+          <div class="metric"><span>기준일</span><strong>{html.escape(str(summary.get("as_of_date", "-")))}</strong></div>
+          <div class="metric"><span>예측일</span><strong>{html.escape(str(summary.get("forecast_date", "-")))}</strong></div>
+          <div class="metric"><span>예측 기간(영업일)</span><strong>{_format_metric(summary.get("horizon_days"), 0)}</strong></div>
+          <div class="metric"><span>최근 종가</span><strong>{_format_metric(summary.get("last_close"), 2)}</strong></div>
+          <div class="metric"><span>예측 주가</span><strong>{_format_metric(summary.get("predicted_price"), 2)}</strong></div>
+          <div class="metric"><span>기대 수익률</span><strong>{_format_metric(summary.get("expected_return_pct"), 2)}%</strong></div>
+          <div class="metric"><span>상승 확률</span><strong>{_format_metric(summary.get("direction_prob_up_pct"), 2)}%</strong></div>
+          <div class="metric"><span>방향 신뢰도</span><strong>{_format_metric(summary.get("direction_confidence_pct"), 2)}%</strong></div>
+          <div class="metric"><span>판단 신호</span><strong>{html.escape(str(summary.get("direction_signal", "-")))}</strong></div>
+          <div class="metric"><span>거래 필터</span><strong>{html.escape(str(summary.get("trade_filter", "-")))}</strong></div>
+          <div class="metric"><span>앙상블 로그수익률</span><strong>{_format_metric(summary.get("ensemble_predicted_log_return"), 5)}</strong></div>
         </div>
         """
 
         charts_html = f"""
         <div class="charts">
-          <div class="card"><h3>二쇨? ?덉륫</h3><img src="data:image/png;base64,{_price_forecast_chart(ctx.result)}" alt="price forecast chart" /></div>
-          <div class="card"><h3>紐⑤뜽 媛以묒튂</h3><img src="data:image/png;base64,{_model_weight_chart(ctx.result)}" alt="model weight chart" /></div>
+          <div class="card"><h3>주가 예측</h3><img src="data:image/png;base64,{_price_forecast_chart(ctx.result)}" alt="price forecast chart" /></div>
+          <div class="card"><h3>모델 가중치</h3><img src="data:image/png;base64,{_model_weight_chart(ctx.result)}" alt="model weight chart" /></div>
         </div>
         """
 
@@ -4254,12 +4332,12 @@ def _html_page(
         )
         tables_html = f"""
         <div class="tables">
-          <div class="card"><h3>?곗씠???뚯뒪 硫뷀??곗씠??/h3>{_safe_table(ctx.source_table)}</div>
-          <div class="card"><h3>?덉륫 ?붿빟</h3>{_stacked_table_html(ctx.result.summary, pinned_columns=["ticker", "as_of_date", "forecast_date"], max_tables=3, min_chunk_columns=3, section_title="?덉륫 ?붿빟")}</div>
-          <div class="card"><h3>紐⑤뜽 ?먯닔</h3>{_stacked_table_html(ctx.result.model_scores, pinned_columns=["model"], max_tables=2, min_chunk_columns=3, section_title="紐⑤뜽 ?먯닔")}</div>
-          <div class="card"><h3>諛⑺뼢???먯닔</h3>{_stacked_table_html(ctx.result.direction_scores, pinned_columns=["model"], max_tables=2, min_chunk_columns=3, section_title="諛⑺뼢???먯닔")}</div>
-          <div class="card"><h3>Regime Snapshot</h3>{_stacked_table_html(ctx.result.regime_snapshot, max_tables=2, min_chunk_columns=3, section_title="Regime Snapshot")}</div>
-          <div class="card"><h3>Feature Importance</h3>{_stacked_table_html(importance, pinned_columns=["model", "feature"], max_tables=2, min_chunk_columns=2, section_title="Feature Importance")}</div>
+          <div class="card"><h3>데이터 소스 메타데이터</h3>{_safe_table(ctx.source_table)}</div>
+          <div class="card"><h3>예측 요약</h3>{_stacked_table_html(ctx.result.summary, pinned_columns=["ticker", "as_of_date", "forecast_date"], max_tables=3, min_chunk_columns=3, section_title="예측 요약")}</div>
+          <div class="card"><h3>모델 점수</h3>{_stacked_table_html(ctx.result.model_scores, pinned_columns=["model"], max_tables=2, min_chunk_columns=3, section_title="모델 점수")}</div>
+          <div class="card"><h3>방향성 점수</h3>{_stacked_table_html(ctx.result.direction_scores, pinned_columns=["model"], max_tables=2, min_chunk_columns=3, section_title="방향성 점수")}</div>
+          <div class="card"><h3>현재 장세 스냅샷</h3>{_stacked_table_html(ctx.result.regime_snapshot, max_tables=2, min_chunk_columns=3, section_title="현재 장세 스냅샷")}</div>
+          <div class="card"><h3>상위 피처 중요도(모델별)</h3>{_stacked_table_html(importance, pinned_columns=["model", "feature"], max_tables=2, min_chunk_columns=2, section_title="상위 피처 중요도")}</div>
         </div>
         """
 
@@ -4270,7 +4348,7 @@ def _html_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P 500 - 二쇨? ?덉륫</title>
+  <title>Stock Analysis Lab | S&P 500 - 주가 예측</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -4278,25 +4356,25 @@ def _html_page(
     body_content = f"""
   <div class="wrap">
     {_page_head(_APP_TITLE)}
-    <div class="sub">?좏깮???곗빱 ?먮뒗 濡쒖뺄 媛寃?CSV瑜?諛뷀깢?쇰줈 10?곸뾽???숈긽釉?二쇨? ?덉륫???섑뻾?섎뒗 ?섏씠吏</div>
+    <div class="sub">선택한 티커 또는 로컬 가격 CSV를 바탕으로 10영업일 앙상블 주가 예측을 수행하는 페이지</div>
     {_nav("page1", enable_technical_page=enable_technical_page)}
     <form class="card" method="post" action="/run">
       <div class="form-grid">
-        <div><label>?곗빱</label><input type="text" name="ticker" value="{html.escape(defaults["ticker"])}" /></div>
-        <div><label>?덉륫 湲곌컙(?곸뾽??</label><input type="number" min="1" name="forecast_horizon" value="{html.escape(defaults["forecast_horizon"])}" /></div>
-        <div><label>怨쇨굅 ?곗씠???곗닔</label><input type="number" min="2" name="history_years" value="{html.escape(defaults["history_years"])}" /></div>
-        <div><label>?쒖옉???좏깮)</label><input type="text" name="start_date" value="{html.escape(defaults["start_date"])}" /></div>
-        <div><label>醫낅즺???좏깮)</label><input type="text" name="end_date" value="{html.escape(defaults["end_date"])}" /></div>
-        <div><label>異쒕젰 湲곕낯 ?대뜑</label><input type="text" name="output_dir" value="{html.escape(defaults["output_dir"])}" /></div>
-        <div><label>濡쒖뺄 媛寃?CSV 寃쎈줈(?좏깮)</label><input type="text" name="prices_csv_path" value="{html.escape(defaults["prices_csv_path"])}" /></div>
-        <div><label>CA 踰덈뱾 寃쎈줈(?좏깮)</label><input type="text" name="ca_bundle_path" value="{html.escape(defaults["ca_bundle_path"])}" /></div>
+        <div><label>티커</label><input type="text" name="ticker" value="{html.escape(defaults["ticker"])}" /></div>
+        <div><label>예측 기간(영업일)</label><input type="number" min="1" name="forecast_horizon" value="{html.escape(defaults["forecast_horizon"])}" /></div>
+        <div><label>과거 데이터 연수</label><input type="number" min="2" name="history_years" value="{html.escape(defaults["history_years"])}" /></div>
+        <div><label>시작일(선택)</label><input type="text" name="start_date" value="{html.escape(defaults["start_date"])}" /></div>
+        <div><label>종료일(선택)</label><input type="text" name="end_date" value="{html.escape(defaults["end_date"])}" /></div>
+        <div><label>출력 기본 폴더</label><input type="text" name="output_dir" value="{html.escape(defaults["output_dir"])}" /></div>
+        <div><label>로컬 가격 CSV 경로(선택)</label><input type="text" name="prices_csv_path" value="{html.escape(defaults["prices_csv_path"])}" /></div>
+        <div><label>CA 번들 경로(선택)</label><input type="text" name="ca_bundle_path" value="{html.escape(defaults["ca_bundle_path"])}" /></div>
       </div>
       <div class="row">
-        <label><input type="checkbox" name="use_sample" {use_sample_checked} /> ?섑뵆 媛寃??곗씠???ъ슜(?ㅽ봽?쇱씤)</label>
-        <label><input type="checkbox" name="auto_save" {auto_save_checked} /> Auto-save results</label>
-        <label><input type="checkbox" name="insecure_ssl" {insecure_ssl_checked} /> ?꾩떆濡?SSL 寃利??꾪솕</label>
-        <button type="submit" name="intent" value="run">二쇨? ?덉륫 ?ㅽ뻾</button>
-        <button type="submit" name="intent" value="resolve_ticker">?뚯궗紐낆쑝濡??곗빱 李얘린</button>
+        <label><input type="checkbox" name="use_sample" {use_sample_checked} /> 샘플 가격 데이터 사용(오프라인)</label>
+        <label><input type="checkbox" name="auto_save" {auto_save_checked} /> 결과 자동 저장</label>
+        <label><input type="checkbox" name="insecure_ssl" {insecure_ssl_checked} /> 임시로 SSL 검증 완화</label>
+        <button type="submit" name="intent" value="run">주가 예측 실행</button>
+        <button type="submit" name="intent" value="resolve_ticker">회사명으로 티커 찾기</button>
       </div>
     </form>
     {info_html}
@@ -4338,7 +4416,7 @@ def _html_walk_forward_page(
 
     info_html = ""
     if ctx is not None and ctx.saved_dir:
-        info_html += f'<div class="notice ok">?뚰겕?ъ썙??寃곌낵瑜?<code>{html.escape(ctx.saved_dir)}</code>????ν뻽?듬땲??</div>'
+        info_html += f'<div class="notice ok">워크포워드 결과를 <code>{html.escape(ctx.saved_dir)}</code>에 저장했습니다.</div>'
     if error:
         info_html += f'<div class="notice err"><pre>{html.escape(error)}</pre></div>'
     if ticker_note:
@@ -4347,10 +4425,10 @@ def _html_walk_forward_page(
     if ctx is None and not error:
         info_html += (
             "<div class=\"notice ok\">"
-            "?뚰겕-?ъ썙??寃利?Walk-Forward Validation)? ?щ윭 怨쇨굅 ?쒖젏?쇰줈 ?쒓컙???섍컧?? "
-            "媛??쒖젏???ㅼ젣濡??ъ슜 媛?ν뻽???뺣낫留뚯쑝濡??덉륫???ㅼ떆 ?섑뻾?⑸땲?? "
-            "????踰덉쓽 理쒖떊 ?덉륫???꾨땲???덉륫 ?붿쭊??諛섎났???좊ː?꾨? ?먭??섎뒗 ??媛???곹빀???섏씠吏?낅땲?? "
-            "?ㅽ뻾 ?쒓컙??湲멸쾶 ?먭뺨吏硫?癒쇱? Max Splits瑜???떠 二쇱꽭??"
+            "워크-포워드 검증(Walk-Forward Validation)은 여러 과거 시점으로 시간을 되감아, "
+            "각 시점에 실제로 사용 가능했을 정보만으로 예측을 다시 수행합니다. "
+            "단 한 번의 최신 예측이 아니라 예측 엔진의 반복적 신뢰도를 점검하는 데 가장 적합한 페이지입니다. "
+            "실행 시간이 길게 느껴지면 먼저 Max Splits를 낮춰 주세요."
             "</div>"
         )
 
@@ -4363,53 +4441,53 @@ def _html_walk_forward_page(
         <div class="metrics">
           <div class="metric"><span>Ticker</span><strong>{html.escape(ctx.ticker)}</strong></div>
           <div class="metric"><span>Price Source</span><strong>{html.escape(ctx.price_source)}</strong></div>
-          <div class="metric"><span>?됯? 遺꾪븷 ??(Splits)</span><strong>{ctx.evaluation_splits:,d}</strong></div>
-          <div class="metric"><span>?덉륫 ?섑룊??(Horizon)</span><strong>{ctx.horizon_days:,d}d</strong></div>
-          <div class="metric"><span>?뚭? 諛⑺뼢 ?곸쨷瑜?/span><strong>{_format_pct(ctx.direction_hit_rate)}</strong></div>
-          <div class="metric"><span>遺꾨쪟 ?곸쨷瑜?/span><strong>{_format_pct(ctx.classification_hit_rate)}</strong></div>
-          <div class="metric"><span>嫄곕옒 而ㅻ쾭由ъ?</span><strong>{_format_pct(ctx.trade_coverage_rate)}</strong></div>
-          <div class="metric"><span>?좊퀎 嫄곕옒 ?곸쨷瑜?/span><strong>{_format_pct(ctx.trade_hit_rate) if ctx.trade_hit_rate is not None else "-"}</strong></div>
-          <div class="metric"><span>?됯퇏?덈??ㅼ감 (MAE)</span><strong>{_format_pct(ctx.mae_return)}</strong></div>
+          <div class="metric"><span>평가 분할 수 (Splits)</span><strong>{ctx.evaluation_splits:,d}</strong></div>
+          <div class="metric"><span>예측 수평선 (Horizon)</span><strong>{ctx.horizon_days:,d}d</strong></div>
+          <div class="metric"><span>회귀 방향 적중률</span><strong>{_format_pct(ctx.direction_hit_rate)}</strong></div>
+          <div class="metric"><span>분류 적중률</span><strong>{_format_pct(ctx.classification_hit_rate)}</strong></div>
+          <div class="metric"><span>거래 커버리지</span><strong>{_format_pct(ctx.trade_coverage_rate)}</strong></div>
+          <div class="metric"><span>선별 거래 적중률</span><strong>{_format_pct(ctx.trade_hit_rate) if ctx.trade_hit_rate is not None else "-"}</strong></div>
+          <div class="metric"><span>평균절대오차 (MAE)</span><strong>{_format_pct(ctx.mae_return)}</strong></div>
           <div class="metric"><span>RMSE</span><strong>{_format_pct(ctx.rmse_return)}</strong></div>
-          <div class="metric"><span>?섏씠釉??鍮??ㅽ궗</span><strong>{_format_pct(ctx.skill_vs_naive) if ctx.skill_vs_naive is not None else "-"}</strong></div>
-          <div class="metric"><span>?됯퇏 ?명뼢 (Bias)</span><strong>{_format_pct(ctx.bias_return)}</strong></div>
-          <div class="metric"><span>?섏씡瑜??곴? (Correlation)</span><strong>{_format_metric(ctx.return_correlation, 3) if ctx.return_correlation is not None else "-"}</strong></div>
-          <div class="metric"><span>理쒓렐 As-Of ?좎쭨</span><strong>{html.escape(ctx.latest_as_of_date)}</strong></div>
-          <div class="metric"><span>理쒓렐 ?ㅽ쁽 ?좎쭨</span><strong>{html.escape(ctx.latest_realized_date)}</strong></div>
+          <div class="metric"><span>나이브 대비 스킬</span><strong>{_format_pct(ctx.skill_vs_naive) if ctx.skill_vs_naive is not None else "-"}</strong></div>
+          <div class="metric"><span>평균 편향 (Bias)</span><strong>{_format_pct(ctx.bias_return)}</strong></div>
+          <div class="metric"><span>수익률 상관 (Correlation)</span><strong>{_format_metric(ctx.return_correlation, 3) if ctx.return_correlation is not None else "-"}</strong></div>
+          <div class="metric"><span>최근 As-Of 날짜</span><strong>{html.escape(ctx.latest_as_of_date)}</strong></div>
+          <div class="metric"><span>최근 실현 날짜</span><strong>{html.escape(ctx.latest_realized_date)}</strong></div>
         </div>
         """
         explanation_html = f"""
         <div class="card">
-          <h3>?뚰겕-?ъ썙??寃利?(Walk-Forward Validation) ?쎈뒗 踰?/h3>
-          <p>媛?遺꾪븷(split)? ?뱀젙 ?쒖젏(as-of date)源뚯? ?뺣낫 媛?ν뻽??怨쇨굅 ?곗씠?곕쭔?쇰줈 ?숈씪???덉륫 援ъ“瑜??ㅼ떆 ?숈뒿???? ?ㅼ쓬 {ctx.horizon_days} ?곸뾽?쇱쓽 ?吏곸엫???덉륫?섍퀬 ?ㅼ젣 寃곌낵? 鍮꾧탳?⑸땲??</p>
+          <h3>워크-포워드 검증 (Walk-Forward Validation) 읽는 법</h3>
+          <p>각 분할(split)은 특정 시점(as-of date)까지 확보 가능했던 과거 데이터만으로 동일한 예측 구조를 다시 학습한 뒤, 다음 {ctx.horizon_days} 영업일의 움직임을 예측하고 실제 결과와 비교합니다.</p>
           <ul>
-            <li><b>?뚭? 諛⑺뼢 ?곸쨷瑜?/b>? 媛寃??덉륫 ?뚭?紐⑦삎??遺?몃쭔 遊ㅼ쓣 ??諛⑺뼢???쇰쭏??留욏엳?붿? 蹂댁뿬以띾땲??</li>
-            <li><b>遺꾨쪟 ?곸쨷瑜?(Classification Hit Rate)</b>? ?곸듅/?섎씫 遺꾨쪟湲?classifier)媛 蹂꾨룄濡?諛⑺뼢??怨좊Ⅴ???λ젰???곕줈 ?먭??⑸땲??</li>
-            <li><b>嫄곕옒 而ㅻ쾭由ъ?</b>? <b>?좊퀎 嫄곕옒 ?곸쨷瑜?/b>? no-trade ?꾪꽣瑜??듦낵???좏샇留??곕줈 蹂대㈃ ?덉쭏??醫뗭븘吏?붿?瑜?蹂댁뿬以띾땲??</li>
-            <li><b>?됯퇏?덈??ㅼ감 (MAE)</b>? <b>RMSE</b>???덉륫 ?좏뻾?섏씡瑜좉낵 ?ㅼ젣 ?좏뻾?섏씡瑜좎쓽 嫄곕━媛먯쓣 痢≪젙?⑸땲??</li>
-            <li><b>?섏씠釉??鍮??ㅽ궗 (Skill vs Naive)</b>? 0% ?섏씡瑜좎쓣 媛?뺥븳 ?⑥닚 湲곗?怨?鍮꾧탳??媛믪쑝濡? ?뚮윭?ㅻ㈃ 紐⑤뜽???곸뼱???됯퇏 ?ㅼ감 痢〓㈃?먯꽌?????ル떎???살엯?덈떎.</li>
-            <li><b>?명뼢 (Bias)</b>? 紐⑤뜽??援ъ“?곸쑝濡??덈Т ?숆??곸씠?덈뒗吏, ?뱀? 吏?섏튂寃?蹂댁닔?곸씠?덈뒗吏 蹂댁뿬以띾땲??</li>
-            <li><b>?덉쭚蹂??붿빟 (Regime Summary)</b>? ?대뼡 ?쒖옣 ?섍꼍?먯꽌 ?덉륫????留욊퀬, ?대뼡 ?섍꼍?먯꽌 ?쎄쾶 源⑥??붿?瑜?蹂댁뿬以띾땲??</li>
+            <li><b>회귀 방향 적중률</b>은 가격 예측 회귀모형의 부호만 봤을 때 방향을 얼마나 맞히는지 보여줍니다.</li>
+            <li><b>분류 적중률 (Classification Hit Rate)</b>은 상승/하락 분류기(classifier)가 별도로 방향을 고르는 능력을 따로 점검합니다.</li>
+            <li><b>거래 커버리지</b>와 <b>선별 거래 적중률</b>은 no-trade 필터를 통과한 신호만 따로 보면 품질이 좋아지는지를 보여줍니다.</li>
+            <li><b>평균절대오차 (MAE)</b>와 <b>RMSE</b>는 예측 선행수익률과 실제 선행수익률의 거리감을 측정합니다.</li>
+            <li><b>나이브 대비 스킬 (Skill vs Naive)</b>은 0% 수익률을 가정한 단순 기준과 비교한 값으로, 플러스면 모델이 적어도 평균 오차 측면에서는 더 낫다는 뜻입니다.</li>
+            <li><b>편향 (Bias)</b>은 모델이 구조적으로 너무 낙관적이었는지, 혹은 지나치게 보수적이었는지 보여줍니다.</li>
+            <li><b>레짐별 요약 (Regime Summary)</b>은 어떤 시장 환경에서 예측이 잘 맞고, 어떤 환경에서 쉽게 깨지는지를 보여줍니다.</li>
           </ul>
           <p>{html.escape(ctx.commentary)}</p>
         </div>
         """
         charts_html = f"""
         <div class="charts">
-          <div class="card"><h3>?덉륫 ?좏뻾?섏씡瑜?vs ?ㅼ젣 ?좏뻾?섏씡瑜?/h3><img src="data:image/png;base64,{ctx.forecast_chart_base64}" alt="walk-forward validation chart" /></div>
-          <div class="card"><h3>?ㅼ감? 濡ㅻ쭅 ?곸쨷瑜?/h3><img src="data:image/png;base64,{ctx.diagnostics_chart_base64}" alt="walk-forward diagnostics chart" /></div>
+          <div class="card"><h3>예측 선행수익률 vs 실제 선행수익률</h3><img src="data:image/png;base64,{ctx.forecast_chart_base64}" alt="walk-forward validation chart" /></div>
+          <div class="card"><h3>오차와 롤링 적중률</h3><img src="data:image/png;base64,{ctx.diagnostics_chart_base64}" alt="walk-forward diagnostics chart" /></div>
         </div>
         """
         model_table_html = _safe_table(ctx.model_table) if not ctx.model_table.empty else "<p class='hint'>Model-level diagnostics were not available.</p>"
         tables_html = f"""
         <div class="tables">
-          <div class="card"><h3>寃利??붿빟</h3>{_safe_table(ctx.summary_table)}</div>
-          <div class="card"><h3>?댁꽍 媛?대뱶</h3>{_safe_table(ctx.interpretation_table)}</div>
+          <div class="card"><h3>검증 요약</h3>{_safe_table(ctx.summary_table)}</div>
+          <div class="card"><h3>해석 가이드</h3>{_safe_table(ctx.interpretation_table)}</div>
           <div class="card"><h3>No-Trade Threshold Summary</h3>{_safe_table(ctx.threshold_table)}</div>
           <div class="card"><h3>Regime Summary</h3>{_safe_table(ctx.regime_table)}</div>
-          <div class="card"><h3>?곗씠???뚯뒪 硫뷀??곗씠??/h3>{_safe_table(ctx.source_table)}</div>
-          <div class="card"><h3>紐⑤뜽 吏꾨떒</h3>{model_table_html}</div>
-          <div class="card"><h3>遺꾪븷蹂?寃곌낵</h3>{_stacked_table_html(ctx.split_table, max_rows=120, pinned_columns=["Split", "As Of", "Realized Date"], max_tables=3, min_chunk_columns=4, section_title="遺꾪븷蹂?寃곌낵")}</div>
+          <div class="card"><h3>데이터 소스 메타데이터</h3>{_safe_table(ctx.source_table)}</div>
+          <div class="card"><h3>모델 진단</h3>{model_table_html}</div>
+          <div class="card"><h3>분할별 결과</h3>{_stacked_table_html(ctx.split_table, max_rows=120, pinned_columns=["Split", "As Of", "Realized Date"], max_tables=3, min_chunk_columns=4, section_title="분할별 결과")}</div>
         </div>
         """
 
@@ -4420,7 +4498,7 @@ def _html_walk_forward_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P 500 - ?뚰겕?ъ썙??寃利?/title>
+  <title>Stock Analysis Lab | S&P 500 - 워크포워드 검증</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -4428,28 +4506,28 @@ def _html_walk_forward_page(
     body_content = f"""
   <div class="wrap">
     {_page_head(_APP_TITLE)}
-    <div class="sub">?뚰겕-?ъ썙??寃利앹쑝濡??덉륫 ?붿쭊??諛섎났 ?깅뒫???먭??섍퀬 寃곌낵瑜??쎄쾶 ?댁꽍?섎뒗 ?섏씠吏</div>
+    <div class="sub">워크-포워드 검증으로 예측 엔진의 반복 성능을 점검하고 결과를 쉽게 해석하는 페이지</div>
     {_nav("page8", enable_technical_page=True)}
     <form class="card" method="post" action="/run_walk_forward">
       <div class="form-grid">
-        <div><label>?곗빱</label><input type="text" name="ticker" value="{html.escape(defaults["ticker"])}" /></div>
-        <div><label>?덉륫 湲곌컙(?곸뾽??</label><input type="number" min="1" name="forecast_horizon" value="{html.escape(defaults["forecast_horizon"])}" /></div>
-        <div><label>怨쇨굅 ?곗씠???곗닔</label><input type="number" min="2" name="history_years" value="{html.escape(defaults["history_years"])}" /></div>
-        <div><label>Min Training Rows</label><input type="number" min="80" name="wf_min_train_rows" value="{html.escape(defaults["wf_min_train_rows"])}" /></div>
-        <div><label>遺꾪븷 媛꾧꺽</label><input type="number" min="1" name="wf_step_size" value="{html.escape(defaults["wf_step_size"])}" /></div>
-        <div><label>Max Splits</label><input type="number" min="1" name="wf_max_splits" value="{html.escape(defaults["wf_max_splits"])}" /></div>
-        <div><label>?쒖옉???좏깮)</label><input type="text" name="start_date" value="{html.escape(defaults["start_date"])}" /></div>
-        <div><label>醫낅즺???좏깮)</label><input type="text" name="end_date" value="{html.escape(defaults["end_date"])}" /></div>
-        <div><label>異쒕젰 湲곕낯 ?대뜑</label><input type="text" name="output_dir" value="{html.escape(defaults["output_dir"])}" /></div>
-        <div><label>濡쒖뺄 媛寃?CSV 寃쎈줈(?좏깮)</label><input type="text" name="prices_csv_path" value="{html.escape(defaults["prices_csv_path"])}" /></div>
-        <div><label>CA 踰덈뱾 寃쎈줈(?좏깮)</label><input type="text" name="ca_bundle_path" value="{html.escape(defaults["ca_bundle_path"])}" /></div>
+        <div><label>티커</label><input type="text" name="ticker" value="{html.escape(defaults["ticker"])}" /></div>
+        <div><label>예측 기간(영업일)</label><input type="number" min="1" name="forecast_horizon" value="{html.escape(defaults["forecast_horizon"])}" /></div>
+        <div><label>과거 데이터 연수</label><input type="number" min="2" name="history_years" value="{html.escape(defaults["history_years"])}" /></div>
+        <div><label>최소 학습 행 수</label><input type="number" min="80" name="wf_min_train_rows" value="{html.escape(defaults["wf_min_train_rows"])}" /></div>
+        <div><label>분할 간격</label><input type="number" min="1" name="wf_step_size" value="{html.escape(defaults["wf_step_size"])}" /></div>
+        <div><label>최대 분할 수</label><input type="number" min="1" name="wf_max_splits" value="{html.escape(defaults["wf_max_splits"])}" /></div>
+        <div><label>시작일(선택)</label><input type="text" name="start_date" value="{html.escape(defaults["start_date"])}" /></div>
+        <div><label>종료일(선택)</label><input type="text" name="end_date" value="{html.escape(defaults["end_date"])}" /></div>
+        <div><label>출력 기본 폴더</label><input type="text" name="output_dir" value="{html.escape(defaults["output_dir"])}" /></div>
+        <div><label>로컬 가격 CSV 경로(선택)</label><input type="text" name="prices_csv_path" value="{html.escape(defaults["prices_csv_path"])}" /></div>
+        <div><label>CA 번들 경로(선택)</label><input type="text" name="ca_bundle_path" value="{html.escape(defaults["ca_bundle_path"])}" /></div>
       </div>
       <div class="row">
-        <label><input type="checkbox" name="use_sample" {use_sample_checked} /> ?섑뵆 媛寃??곗씠???ъ슜(?ㅽ봽?쇱씤)</label>
-        <label><input type="checkbox" name="auto_save" {auto_save_checked} /> Auto-save results</label>
-        <label><input type="checkbox" name="insecure_ssl" {insecure_ssl_checked} /> ?꾩떆濡?SSL 寃利??꾪솕</label>
-        <button type="submit" name="intent" value="run">?뚰겕?ъ썙??寃利??ㅽ뻾</button>
-        <button type="submit" name="intent" value="resolve_ticker">?뚯궗紐낆쑝濡??곗빱 李얘린</button>
+        <label><input type="checkbox" name="use_sample" {use_sample_checked} /> 샘플 가격 데이터 사용(오프라인)</label>
+        <label><input type="checkbox" name="auto_save" {auto_save_checked} /> 결과 자동 저장</label>
+        <label><input type="checkbox" name="insecure_ssl" {insecure_ssl_checked} /> 임시로 SSL 검증 완화</label>
+        <button type="submit" name="intent" value="run">워크포워드 검증 실행</button>
+        <button type="submit" name="intent" value="resolve_ticker">회사명으로 티커 찾기</button>
       </div>
     </form>
     {info_html}
@@ -4461,10 +4539,6 @@ def _html_walk_forward_page(
 </body>
 </html>
 """
-
-    if is_sub_page:
-        return body_content
-    return head_content + body_content
 
 
 def _html_financial_page(
@@ -4488,7 +4562,7 @@ def _html_financial_page(
     insecure_ssl_checked = "checked" if form.get("insecure_ssl", "") == "on" else ""
     info_html = ""
     if ctx is not None and ctx.saved_dir:
-        info_html += f'<div class="notice ok">寃곌낵瑜?<code>{html.escape(ctx.saved_dir)}</code>????ν뻽?듬땲??</div>'
+        info_html += f'<div class="notice ok">결과를 <code>{html.escape(ctx.saved_dir)}</code>에 저장했습니다.</div>'
     if error:
         info_html += f'<div class="notice err"><pre>{html.escape(error)}</pre></div>'
     if ticker_note:
@@ -4497,8 +4571,8 @@ def _html_financial_page(
     if ctx is None and not error:
         info_html += (
             "<div class=\"notice ok\">"
-            "?щТ?쒗몴쨌諛몃쪟?먯씠???섏씠吏???ㅻⅨ ??낵 蹂꾨룄濡??ㅽ뻾?⑸땲?? "
-            "?곗빱瑜??낅젰?????ㅽ뻾 踰꾪듉???꾨Ⅴ硫?理쒖떊 ?щТ ?ㅻ깄?룹쓣 遺덈윭?듬땲??"
+            "재무제표·밸류에이션 페이지는 다른 탭과 별도로 실행됩니다. "
+            "티커를 입력한 뒤 실행 버튼을 누르면 최신 재무 스냅샷을 불러옵니다."
             "</div>"
         )
 
@@ -4507,26 +4581,26 @@ def _html_financial_page(
     if ctx is not None:
         metric_html = f"""
         <div class="metrics">
-          <div class="metric"><span>?곗빱</span><strong>{html.escape(ctx.ticker)}</strong></div>
-          <div class="metric"><span>?뚯궗紐?/span><strong>{html.escape(str(ctx.company_name or '-'))}</strong></div>
-          <div class="metric"><span>?듯솕</span><strong>{html.escape(str(ctx.currency or '-'))}</strong></div>
+          <div class="metric"><span>티커</span><strong>{html.escape(ctx.ticker)}</strong></div>
+          <div class="metric"><span>회사명</span><strong>{html.escape(str(ctx.company_name or '-'))}</strong></div>
+          <div class="metric"><span>통화</span><strong>{html.escape(str(ctx.currency or '-'))}</strong></div>
           <div class="metric"><span>PER (Trailing)</span><strong>{_format_fin_value(ctx.metrics.get("PER (Trailing)"))}</strong></div>
           <div class="metric"><span>PER (Forward)</span><strong>{_format_fin_value(ctx.metrics.get("PER (Forward)"))}</strong></div>
           <div class="metric"><span>PBR</span><strong>{_format_fin_value(ctx.metrics.get("PBR"))}</strong></div>
-          <div class="metric"><span>?쒓?珥앹븸</span><strong>{_format_fin_value(ctx.metrics.get("Market Cap"))}</strong></div>
+          <div class="metric"><span>시가총액</span><strong>{_format_fin_value(ctx.metrics.get("Market Cap"))}</strong></div>
           <div class="metric"><span>ROE</span><strong>{_format_fin_value(ctx.metrics.get("ROE"))}</strong></div>
         </div>
         """
 
         tables_html = f"""
         <div class="tables">
-          <div class="card"><h3>?곗씠???뚯뒪 硫뷀??곗씠??/h3>{_safe_table(ctx.source_table)}</div>
-          <div class="card"><h3>?쒓났???곹깭</h3>{_safe_table(ctx.provider_status_table)}</div>
-          <div class="card"><h3>?щТ 吏??/h3>{_safe_table(_metrics_table(ctx.metrics))}</div>
-          <div class="card"><h3>理쒖떊 ?щТ ?붿빟</h3>{_safe_table(ctx.summary_table)}</div>
-          <div class="card"><h3>?먯씡怨꾩궛??理쒓렐 湲곌컙)</h3>{_safe_table(ctx.income_table)}</div>
-          <div class="card"><h3>?щТ?곹깭??理쒓렐 湲곌컙)</h3>{_safe_table(ctx.balance_table)}</div>
-          <div class="card"><h3>?꾧툑?먮쫫??理쒓렐 湲곌컙)</h3>{_safe_table(ctx.cashflow_table)}</div>
+          <div class="card"><h3>데이터 소스 메타데이터</h3>{_safe_table(ctx.source_table)}</div>
+          <div class="card"><h3>제공자 상태</h3>{_safe_table(ctx.provider_status_table)}</div>
+          <div class="card"><h3>재무 지표</h3>{_safe_table(_metrics_table(ctx.metrics))}</div>
+          <div class="card"><h3>최신 재무 요약</h3>{_safe_table(ctx.summary_table)}</div>
+          <div class="card"><h3>손익계산서(최근 기간)</h3>{_safe_table(ctx.income_table)}</div>
+          <div class="card"><h3>재무상태표(최근 기간)</h3>{_safe_table(ctx.balance_table)}</div>
+          <div class="card"><h3>현금흐름표(최근 기간)</h3>{_safe_table(ctx.cashflow_table)}</div>
         </div>
         """
 
@@ -4537,7 +4611,7 @@ def _html_financial_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P 500 - ?щТ?쒗몴쨌諛몃쪟?먯씠??/title>
+  <title>Stock Analysis Lab | S&P 500 - 재무제표·밸류에이션</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -4545,21 +4619,21 @@ def _html_financial_page(
     body_content = f"""
   <div class="wrap">
     {_page_head(_APP_TITLE)}
-    <div class="sub">?곗빱 湲곗? ?щТ?쒗몴? 諛몃쪟?먯씠??吏??PER/PBR)瑜???踰덉뿉 ?뺤씤?섎뒗 ?섏씠吏</div>
+    <div class="sub">티커 기준 재무제표와 밸류에이션 지표(PER/PBR)를 한 번에 확인하는 페이지</div>
     {_nav("page2", enable_technical_page=enable_technical_page)}
     <form class="card" method="post" action="/run_financial">
       <div class="form-grid">
-        <div><label>?곗빱</label><input type="text" name="ticker" value="{html.escape(defaults["ticker"])}" /></div>
-        <div><label>Statement Periods</label><input type="number" min="1" name="statement_periods" value="{html.escape(defaults["statement_periods"])}" /></div>
-        <div><label>異쒕젰 湲곕낯 ?대뜑</label><input type="text" name="output_dir" value="{html.escape(defaults["output_dir"])}" /></div>
-        <div><label>CA 踰덈뱾 寃쎈줈(?좏깮)</label><input type="text" name="ca_bundle_path" value="{html.escape(defaults["ca_bundle_path"])}" /></div>
-        <div><label>FMP API ???좏깮)</label><input type="text" name="fmp_api_key" value="{html.escape(defaults["fmp_api_key"])}" /></div>
+        <div><label>티커</label><input type="text" name="ticker" value="{html.escape(defaults["ticker"])}" /></div>
+        <div><label>조회 기간 수</label><input type="number" min="1" name="statement_periods" value="{html.escape(defaults["statement_periods"])}" /></div>
+        <div><label>출력 기본 폴더</label><input type="text" name="output_dir" value="{html.escape(defaults["output_dir"])}" /></div>
+        <div><label>CA 번들 경로(선택)</label><input type="text" name="ca_bundle_path" value="{html.escape(defaults["ca_bundle_path"])}" /></div>
+        <div><label>FMP API 키(선택)</label><input type="text" name="fmp_api_key" value="{html.escape(defaults["fmp_api_key"])}" /></div>
       </div>
       <div class="row">
-        <label><input type="checkbox" name="auto_save" {auto_save_checked} /> Auto-save results</label>
-        <label><input type="checkbox" name="insecure_ssl" {insecure_ssl_checked} /> ?꾩떆濡?SSL 寃利??꾪솕</label>
-        <button type="submit" name="intent" value="run">?щТ ?ㅻ깄???ㅽ뻾</button>
-        <button type="submit" name="intent" value="resolve_ticker">?뚯궗紐낆쑝濡??곗빱 李얘린</button>
+        <label><input type="checkbox" name="auto_save" {auto_save_checked} /> 결과 자동 저장</label>
+        <label><input type="checkbox" name="insecure_ssl" {insecure_ssl_checked} /> 임시로 SSL 검증 완화</label>
+        <button type="submit" name="intent" value="run">재무 스냅샷 실행</button>
+        <button type="submit" name="intent" value="resolve_ticker">회사명으로 티커 찾기</button>
       </div>
     </form>
     {info_html}
@@ -4597,7 +4671,7 @@ def _html_technical_page(
 
     info_html = ""
     if ctx is not None and ctx.saved_dir:
-        info_html += f'<div class="notice ok">湲곗닠??遺꾩꽍 寃곌낵瑜?<code>{html.escape(ctx.saved_dir)}</code>????ν뻽?듬땲??</div>'
+        info_html += f'<div class="notice ok">기술적 분석 결과를 <code>{html.escape(ctx.saved_dir)}</code>에 저장했습니다.</div>'
     if error:
         info_html += f'<div class="notice err"><pre>{html.escape(error)}</pre></div>'
     if ticker_note:
@@ -4606,8 +4680,8 @@ def _html_technical_page(
     if ctx is None and not error:
         info_html += (
             "<div class=\"notice ok\">"
-            "湲곗닠??遺꾩꽍 ?섏씠吏???좏깮???곗빱??理쒖떊 OHLCV ?곗씠?곕? 遺덈윭? "
-            "李⑦듃蹂?吏꾨떒 寃곌낵瑜?蹂댁뿬以띾땲?? ?ㅽ봽?쇱씤 誘몃━蹂닿린媛 ?꾩슂???뚮쭔 ?섑뵆 ?곗씠?곕? ?ъ슜??二쇱꽭??"
+            "기술적 분석 페이지는 선택한 티커의 최신 OHLCV 데이터를 불러와 "
+            "차트별 진단 결과를 보여줍니다. 오프라인 미리보기가 필요할 때만 샘플 데이터를 사용해 주세요."
             "</div>"
         )
 
@@ -4617,12 +4691,12 @@ def _html_technical_page(
     if ctx is not None:
         metric_html = f"""
         <div class="metrics">
-          <div class="metric"><span>?곗빱</span><strong>{html.escape(ctx.ticker)}</strong></div>
-          <div class="metric"><span>?곗씠???뚯뒪</span><strong>{html.escape(ctx.source)}</strong></div>
-          <div class="metric"><span>????/span><strong>{ctx.rows:,d}</strong></div>
-          <div class="metric"><span>湲곌컙</span><strong>{html.escape(ctx.first_date)} ~ {html.escape(ctx.last_date)}</strong></div>
-          <div class="metric"><span>?ㅽ뻾 ??ぉ</span><strong>{html.escape(ctx.action)}</strong></div>
-          <div class="metric"><span>猷⑸갚 紐⑺몴</span><strong>{ta_web_gui.LOOKBACK_ROWS:,d}</strong></div>
+          <div class="metric"><span>티커</span><strong>{html.escape(ctx.ticker)}</strong></div>
+          <div class="metric"><span>데이터 소스</span><strong>{html.escape(ctx.source)}</strong></div>
+          <div class="metric"><span>행 수</span><strong>{ctx.rows:,d}</strong></div>
+          <div class="metric"><span>기간</span><strong>{html.escape(ctx.first_date)} ~ {html.escape(ctx.last_date)}</strong></div>
+          <div class="metric"><span>실행 항목</span><strong>{html.escape(ctx.action)}</strong></div>
+          <div class="metric"><span>룩백 목표</span><strong>{ta_web_gui.LOOKBACK_ROWS:,d}</strong></div>
         </div>
         """
 
@@ -4637,8 +4711,8 @@ def _html_technical_page(
 
         table_html = f"""
         <div class="tables">
-          <div class="card"><h3>?곗씠???뚯뒪 硫뷀??곗씠??/h3>{_safe_table(ctx.source_table)}</div>
-          <div class="card"><h3>?ㅽ뻾 ?붿빟</h3>{_safe_table(ctx.summary_table)}</div>
+          <div class="card"><h3>데이터 소스 메타데이터</h3>{_safe_table(ctx.source_table)}</div>
+          <div class="card"><h3>실행 요약</h3>{_safe_table(ctx.summary_table)}</div>
         </div>
         """
 
@@ -4649,7 +4723,7 @@ def _html_technical_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P 500 - 湲곗닠??遺꾩꽍</title>
+  <title>Stock Analysis Lab | S&P 500 - 기술적 분석</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -4657,24 +4731,24 @@ def _html_technical_page(
     body_content = f"""
   <div class="wrap">
     {_page_head(_APP_TITLE)}
-    <div class="sub">?대룞?됯퇏?? 罹붾뱾, RSI, MACD 李⑦듃濡?湲곗닠???먮쫫???먭??섎뒗 ?섏씠吏</div>
+    <div class="sub">이동평균선, 캔들, RSI, MACD 차트로 기술적 흐름을 점검하는 페이지</div>
     {_nav("page3", enable_technical_page=True)}
     <form class="card" method="post" action="/run_technical">
       <div class="form-grid">
-        <div><label>?곗빱</label><input type="text" name="ticker" value="{html.escape(defaults["ticker"])}" /></div>
-        <div><label>異쒕젰 湲곕낯 ?대뜑</label><input type="text" name="output_dir" value="{html.escape(defaults["output_dir"])}" /></div>
+        <div><label>티커</label><input type="text" name="ticker" value="{html.escape(defaults["ticker"])}" /></div>
+        <div><label>출력 기본 폴더</label><input type="text" name="output_dir" value="{html.escape(defaults["output_dir"])}" /></div>
       </div>
       <div class="row">
-        <label><input type="checkbox" name="use_sample" {use_sample_checked} /> ?섑뵆 媛寃??곗씠???ъ슜(?ㅽ봽?쇱씤)</label>
-        <label><input type="checkbox" name="auto_save" {auto_save_checked} /> Auto-save CSV/charts</label>
+        <label><input type="checkbox" name="use_sample" {use_sample_checked} /> 샘플 가격 데이터 사용(오프라인)</label>
+        <label><input type="checkbox" name="auto_save" {auto_save_checked} /> CSV/차트 자동 저장</label>
       </div>
       <div class="row">
-        <button type="submit" name="action" value="ma">Moving Average</button>
-        <button type="submit" name="action" value="candle">罹붾뱾李⑦듃</button>
+        <button type="submit" name="action" value="ma">이동평균선</button>
+        <button type="submit" name="action" value="candle">캔들차트</button>
         <button type="submit" name="action" value="rsi">RSI</button>
         <button type="submit" name="action" value="macd">MACD</button>
-        <button type="submit" name="action" value="all">?꾩껜 ?ㅽ뻾</button>
-        <button type="submit" name="intent" value="resolve_ticker">?뚯궗紐낆쑝濡??곗빱 李얘린</button>
+        <button type="submit" name="action" value="all">전체 실행</button>
+        <button type="submit" name="intent" value="resolve_ticker">회사명으로 티커 찾기</button>
       </div>
     </form>
     {info_html}
@@ -4711,8 +4785,8 @@ def _html_returns_page(
     if ctx is None and not error:
         info_html += (
             "<div class=\"notice ok\">"
-            "?섏씡瑜?鍮꾧탳 ?섏씠吏??怨듭쑀 S&P 500 SQLite/罹먯떆 ?곗씠?곕? 諛뷀깢?쇰줈 "
-            "?좏깮 醫낅ぉ???뱁꽣? ?꾩껜 吏?섏뿉 鍮꾧탳?⑸땲?? ?꾩옱 ?ㅽ뿕?ㅼ뿉???좏깮???곗빱瑜?洹몃?濡??ъ궗?⑺빐???⑸땲??"
+            "수익률 비교 페이지는 공유 S&P 500 SQLite/캐시 데이터를 바탕으로 "
+            "선택 종목을 섹터와 전체 지수에 비교합니다. 현재 실험실에서 선택한 티커를 그대로 재사용해도 됩니다."
             "</div>"
         )
 
@@ -4735,9 +4809,6 @@ def _html_returns_page(
           <div class="metric"><span>1M Return</span><strong>{_format_pct(ctx.period_returns.get("1M"))}</strong></div>
           <div class="metric"><span>YTD Return</span><strong>{_format_pct(ctx.period_returns.get("YTD"))}</strong></div>
           <div class="metric"><span>MTD Return</span><strong>{_format_pct(ctx.period_returns.get("MTD"))}</strong></div>
-          <div class="metric"><span>WTD Return</span><strong>{_format_pct(ctx.period_returns.get("WTD"))}</strong></div>
-          <div class="metric"><span>20D Return</span><strong>{_format_pct(ctx.period_returns.get("20D"))}</strong></div>
-          <div class="metric"><span>60D Return</span><strong>{_format_pct(ctx.period_returns.get("60D"))}</strong></div>
           <div class="metric"><span>Sector YTD Rank</span><strong>{html.escape(sector_rank_text)}</strong></div>
           <div class="metric"><span>S&P 500 YTD Rank</span><strong>{html.escape(market_rank_text)}</strong></div>
         </div>
@@ -4745,28 +4816,28 @@ def _html_returns_page(
 
         charts_html = f"""
         <div class="charts">
-          <div class="card"><h3>YTD 湲곗? 100 吏??/h3><img src="data:image/png;base64,{ctx.relative_chart_base64}" alt="ytd base 100 index chart" /></div>
-          <div class="card"><h3>理쒓렐 ?쇨컙 ?섏씡瑜?鍮꾧탳</h3><img src="data:image/png;base64,{ctx.daily_chart_base64}" alt="daily return comparison chart" /></div>
+          <div class="card"><h3>YTD 기준 100 지수</h3><img src="data:image/png;base64,{ctx.relative_chart_base64}" alt="ytd base 100 index chart" /></div>
+          <div class="card"><h3>최근 일간 수익률 비교</h3><img src="data:image/png;base64,{ctx.daily_chart_base64}" alt="daily return comparison chart" /></div>
         </div>
         """
 
         tables_html = f"""
         <div class="tables">
-          <div class="card"><h3>湲곌컙蹂??섏씡瑜?鍮꾧탳</h3>{_safe_table(ctx.summary_table)}</div>
+          <div class="card"><h3>기간별 수익률 비교</h3>{_safe_table(ctx.summary_table)}</div>
           <div class="table-grid">
-            <div class="card"><h3>理쒓렐 10?곸뾽???쇨컙 ?섏씡瑜?({html.escape(ctx.ticker)})</h3>{_safe_table(ctx.daily_returns_table)}</div>
-            <div class="card"><h3>理쒓렐 10?곸뾽???쇨컙 ?섏씡瑜?({html.escape(ctx.sector)} ?뱁꽣)</h3>{_safe_table(ctx.sector_daily_returns_table)}</div>
+            <div class="card"><h3>최근 10영업일 일간 수익률 ({html.escape(ctx.ticker)})</h3>{_safe_table(ctx.daily_returns_table)}</div>
+            <div class="card"><h3>최근 10영업일 일간 수익률 ({html.escape(ctx.sector)} 섹터)</h3>{_safe_table(ctx.sector_daily_returns_table)}</div>
           </div>
-          <div class="card"><h3>?곗씠???뚯뒪 硫뷀??곗씠??/h3>{_safe_table(ctx.source_table)}</div>
+          <div class="card"><h3>데이터 소스 메타데이터</h3>{_safe_table(ctx.source_table)}</div>
         </div>
         """
 
         ranking_html = f"""
         <div class="table-grid">
-          <div class="card"><h3>?뱁꽣 YTD ?곸쐞 10媛?/h3>{_safe_table(ctx.sector_top_table)}</div>
-          <div class="card"><h3>?뱁꽣 YTD ?섏쐞 10媛?/h3>{_safe_table(ctx.sector_bottom_table)}</div>
-          <div class="card"><h3>S&amp;P 500 YTD ?곸쐞 10媛?/h3>{_safe_table(ctx.market_top_table)}</div>
-          <div class="card"><h3>S&amp;P 500 YTD ?섏쐞 10媛?/h3>{_safe_table(ctx.market_bottom_table)}</div>
+          <div class="card"><h3>섹터 YTD 상위 10개</h3>{_safe_table(ctx.sector_top_table)}</div>
+          <div class="card"><h3>섹터 YTD 하위 10개</h3>{_safe_table(ctx.sector_bottom_table)}</div>
+          <div class="card"><h3>S&amp;P 500 YTD 상위 10개</h3>{_safe_table(ctx.market_top_table)}</div>
+          <div class="card"><h3>S&amp;P 500 YTD 하위 10개</h3>{_safe_table(ctx.market_bottom_table)}</div>
         </div>
         """
 
@@ -4777,7 +4848,7 @@ def _html_returns_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P 500 - ?섏씡瑜?鍮꾧탳</title>
+  <title>Stock Analysis Lab | S&P 500 - 수익률 비교</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -4785,15 +4856,15 @@ def _html_returns_page(
     body_content = f"""
   <div class="wrap">
     {_page_head(_APP_TITLE)}
-    <div class="sub">怨듭쑀 S&P 500 ?곗씠?곕줈 醫낅ぉ ?섏씡瑜좉낵 ?뱁꽣쨌吏???곷?媛뺣룄瑜?鍮꾧탳?섎뒗 ?섏씠吏</div>
+    <div class="sub">공유 S&P 500 데이터로 종목 수익률과 섹터·지수 상대강도를 비교하는 페이지</div>
     {_nav("page4", enable_technical_page=True)}
     <form class="card" method="post" action="/run_returns">
       <div class="form-grid">
         <div><label>Ticker</label><input type="text" name="ticker" value="{html.escape(defaults["ticker"])}" /></div>
       </div>
       <div class="row">
-        <button type="submit" name="intent" value="run">?섏씡瑜?鍮꾧탳 ?ㅽ뻾</button>
-        <button type="submit" name="intent" value="resolve_ticker">?뚯궗紐낆쑝濡??곗빱 李얘린</button>
+        <button type="submit" name="intent" value="run">수익률 비교 실행</button>
+        <button type="submit" name="intent" value="resolve_ticker">회사명으로 티커 찾기</button>
       </div>
     </form>
     {info_html}
@@ -4830,8 +4901,8 @@ def _html_risk_page(
     if ctx is None and not error:
         info_html += (
             "<div class=\"notice ok\">"
-            "由ъ뒪????쒕낫?쒕뒗 怨듭쑀 S&P 500 SQLite ?곗씠?곕? ?댁슜???좏깮 醫낅ぉ??"
-            "蹂?숈꽦, ?숉룺, ?쒖옣 誘쇨컧?꾨? 痢≪젙?⑸땲?? ?꾩옱 ?ㅽ뿕?ㅼ뿉???좏깮???곗빱瑜?洹몃?濡??ъ궗?⑺빐???⑸땲??"
+            "리스크 대시보드는 공유 S&P 500 SQLite 데이터를 이용해 선택 종목의 "
+            "변동성, 낙폭, 시장 민감도를 측정합니다. 현재 실험실에서 선택한 티커를 그대로 재사용해도 됩니다."
             "</div>"
         )
 
@@ -4864,29 +4935,29 @@ def _html_risk_page(
         """
         commentary_html = f"""
         <div class="card">
-          <h3>由ъ뒪???댁꽍</h3>
+          <h3>리스크 해석</h3>
           <p>{html.escape(ctx.commentary)}</p>
         </div>
         """
         charts_html = f"""
         <div class="charts">
-          <div class="card"><h3>1???숉룺 鍮꾧탳</h3><img src="data:image/png;base64,{ctx.drawdown_chart_base64}" alt="drawdown comparison chart" /></div>
-          <div class="card"><h3>20??濡ㅻ쭅 ?곗쑉??蹂?숈꽦</h3><img src="data:image/png;base64,{ctx.volatility_chart_base64}" alt="rolling volatility chart" /></div>
+          <div class="card"><h3>1년 낙폭 비교</h3><img src="data:image/png;base64,{ctx.drawdown_chart_base64}" alt="drawdown comparison chart" /></div>
+          <div class="card"><h3>20일 롤링 연율화 변동성</h3><img src="data:image/png;base64,{ctx.volatility_chart_base64}" alt="rolling volatility chart" /></div>
         </div>
         """
         tables_html = f"""
         <div class="tables">
-          <div class="card"><h3>蹂?숈꽦쨌?숉룺 ?붿빟</h3>{_safe_table(ctx.summary_table)}</div>
-          <div class="card"><h3>理쒓렐 20?곸뾽??異⑷꺽 ?먭?</h3>{_safe_table(ctx.recent_shock_table)}</div>
-          <div class="card"><h3>?곗씠???뚯뒪 硫뷀??곗씠??/h3>{_safe_table(ctx.source_table)}</div>
+          <div class="card"><h3>변동성·낙폭 요약</h3>{_safe_table(ctx.summary_table)}</div>
+          <div class="card"><h3>최근 20영업일 충격 점검</h3>{_safe_table(ctx.recent_shock_table)}</div>
+          <div class="card"><h3>데이터 소스 메타데이터</h3>{_safe_table(ctx.source_table)}</div>
         </div>
         """
         ranking_html = f"""
         <div class="table-grid">
-          <div class="card"><h3>?뱁꽣 ??1??蹂?숈꽦 ?곸쐞</h3>{_safe_table(ctx.sector_high_vol_table)}</div>
-          <div class="card"><h3>?뱁꽣 ??1??蹂?숈꽦 ?섏쐞</h3>{_safe_table(ctx.sector_low_vol_table)}</div>
-          <div class="card"><h3>S&amp;P 500 1??蹂?숈꽦 ?곸쐞</h3>{_safe_table(ctx.market_high_vol_table)}</div>
-          <div class="card"><h3>S&amp;P 500 1??蹂?숈꽦 ?섏쐞</h3>{_safe_table(ctx.market_low_vol_table)}</div>
+          <div class="card"><h3>섹터 내 1년 변동성 상위</h3>{_safe_table(ctx.sector_high_vol_table)}</div>
+          <div class="card"><h3>섹터 내 1년 변동성 하위</h3>{_safe_table(ctx.sector_low_vol_table)}</div>
+          <div class="card"><h3>S&amp;P 500 1년 변동성 상위</h3>{_safe_table(ctx.market_high_vol_table)}</div>
+          <div class="card"><h3>S&amp;P 500 1년 변동성 하위</h3>{_safe_table(ctx.market_low_vol_table)}</div>
         </div>
         """
 
@@ -4897,7 +4968,7 @@ def _html_risk_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P 500 - 由ъ뒪????쒕낫??/title>
+  <title>Stock Analysis Lab | S&P 500 - 리스크 대시보드</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -4905,15 +4976,15 @@ def _html_risk_page(
     body_content = f"""
   <div class="wrap">
     {_page_head(_APP_TITLE)}
-    <div class="sub">怨듭쑀 S&P 500 ?곗씠?곕줈 蹂?숈꽦, ?숉룺, 踰좏?瑜??먭??섎뒗 由ъ뒪???섏씠吏</div>
+    <div class="sub">공유 S&P 500 데이터로 변동성, 낙폭, 베타를 점검하는 리스크 페이지</div>
     {_nav("page5", enable_technical_page=True)}
     <form class="card" method="post" action="/run_risk">
       <div class="form-grid">
-        <div><label>?곗빱</label><input type="text" name="ticker" value="{html.escape(defaults["ticker"])}" /></div>
+        <div><label>티커</label><input type="text" name="ticker" value="{html.escape(defaults["ticker"])}" /></div>
       </div>
       <div class="row">
-        <button type="submit" name="intent" value="run">由ъ뒪????쒕낫???ㅽ뻾</button>
-        <button type="submit" name="intent" value="resolve_ticker">?뚯궗紐낆쑝濡??곗빱 李얘린</button>
+        <button type="submit" name="intent" value="run">리스크 대시보드 실행</button>
+        <button type="submit" name="intent" value="resolve_ticker">회사명으로 티커 찾기</button>
       </div>
     </form>
     {info_html}
@@ -4951,21 +5022,21 @@ def _html_factor_page(
     if ctx is None and not error:
         info_html += (
             "<div class=\"notice ok\">"
-            "?⑺꽣쨌?덉쭚 ?⑹? ?좏깮 醫낅ぉ???쒖옣(S&P 500)怨??뱁꽣 ?붿씤?쇰줈 遺꾪빐?? "
-            "理쒓렐 60嫄곕옒?쇱쓽 誘쇨컧?꾩? 理쒓렐 20嫄곕옒?쇱쓽 ?붿감?깃낵瑜??ㅽ뿕?곸쑝濡??쎈뒗 ?섏씠吏?낅땲?? "
-            "由ъ뒪????쒕낫???ㅼ쓬 ?④퀎?먯꽌 ?꾩옱 二쇨? ?吏곸엫???쒖옣 ?곹뼢?몄?, ?뱁꽣 ?곹뼢?몄?, ?뱀? 醫낅ぉ 怨좎쑀 ?먮쫫?몄? 媛?좏븷 ???좎슜?⑸땲??"
+            "팩터·레짐 랩은 선택 종목을 시장(S&P 500)과 섹터 요인으로 분해해, "
+            "최근 60거래일의 민감도와 최근 20거래일의 잔차성과를 실험적으로 읽는 페이지입니다. "
+            "리스크 대시보드 다음 단계에서 현재 주가 움직임이 시장 영향인지, 섹터 영향인지, 혹은 종목 고유 흐름인지 가늠할 때 유용합니다."
             "</div>"
         )
 
     metric_html = ""
     explanation_html = """
         <div class="card">
-          <h3>?⑺꽣쨌?덉쭚 ???쎈뒗 踰?/h3>
-          <p>???섏씠吏??醫낅ぉ???쇰퀎 ?섏씡瑜좎쓣 ?쒖옣(S&amp;P 500)怨??뱁꽣 ?섏씡瑜좎뿉 鍮꾧탳??<b>踰좏?(beta)</b>, <b>?곴?怨꾩닔(correlation)</b>, <b>?붿감?섏씡瑜?residual return)</b>, 洹몃━怨??꾩옱 <b>援?㈃(regime)</b>???④퍡 ?쎈룄濡?留뚮뱺 ?ㅽ뿕???섏씠吏?낅땲??</p>
+          <h3>팩터·레짐 랩 읽는 법</h3>
+          <p>이 페이지는 종목의 일별 수익률을 시장(S&amp;P 500)과 섹터 수익률에 비교해 <b>베타(beta)</b>, <b>상관계수(correlation)</b>, <b>잔차수익률(residual return)</b>, 그리고 현재 <b>국면(regime)</b>을 함께 읽도록 만든 실험적 페이지입니다.</p>
           <ul>
-            <li><b>踰좏? (beta)</b>???쒖옣 ?먮뒗 ?뱁꽣媛 1 ?吏곸씪 ??醫낅ぉ???됯퇏?곸쑝濡??쇰쭏???ш쾶 諛섏쓳?덈뒗吏 蹂댁뿬以띾땲??</li>
-            <li><b>?곴?怨꾩닔 (correlation)</b>???④퍡 ?吏곸씠??媛뺣룄瑜? <b>?붿감?섏씡瑜?(residual return)</b>? 怨듯넻 ?붿씤???쒓굅?????⑤뒗 醫낅ぉ 怨좎쑀 ?깃낵瑜??섎??⑸땲??</li>
-            <li><b>異붿꽭 援?㈃ (trend regime)</b>, <b>蹂?숈꽦 援?㈃ (volatility regime)</b>, <b>踰좏? 援?㈃ (beta regime)</b>???⑹퀜 ?꾩옱 ?섍꼍????以꾨줈 ?붿빟?⑸땲??</li>
+            <li><b>베타 (beta)</b>는 시장 또는 섹터가 1 움직일 때 종목이 평균적으로 얼마나 크게 반응했는지 보여줍니다.</li>
+            <li><b>상관계수 (correlation)</b>는 함께 움직이는 강도를, <b>잔차수익률 (residual return)</b>은 공통 요인을 제거한 뒤 남는 종목 고유 성과를 의미합니다.</li>
+            <li><b>추세 국면 (trend regime)</b>, <b>변동성 국면 (volatility regime)</b>, <b>베타 국면 (beta regime)</b>을 합쳐 현재 환경을 한 줄로 요약합니다.</li>
           </ul>
         </div>
     """
@@ -4992,12 +5063,12 @@ def _html_factor_page(
         """
         explanation_html = f"""
         <div class="card">
-          <h3>?⑺꽣쨌?덉쭚 ???쎈뒗 踰?/h3>
-          <p>???섏씠吏??醫낅ぉ???쇰퀎 ?섏씡瑜좎쓣 ?쒖옣(S&amp;P 500)怨??뱁꽣 ?섏씡瑜좎뿉 鍮꾧탳??<b>踰좏?(beta)</b>, <b>?곴?怨꾩닔(correlation)</b>, <b>?붿감?섏씡瑜?residual return)</b>, 洹몃━怨??꾩옱 <b>援?㈃(regime)</b>???④퍡 ?쎈룄濡?留뚮뱺 ?ㅽ뿕???섏씠吏?낅땲??</p>
+          <h3>팩터·레짐 랩 읽는 법</h3>
+          <p>이 페이지는 종목의 일별 수익률을 시장(S&amp;P 500)과 섹터 수익률에 비교해 <b>베타(beta)</b>, <b>상관계수(correlation)</b>, <b>잔차수익률(residual return)</b>, 그리고 현재 <b>국면(regime)</b>을 함께 읽도록 만든 실험적 페이지입니다.</p>
           <ul>
-            <li><b>踰좏? (beta)</b>???쒖옣 ?먮뒗 ?뱁꽣媛 1 ?吏곸씪 ??醫낅ぉ???됯퇏?곸쑝濡??쇰쭏???ш쾶 諛섏쓳?덈뒗吏 蹂댁뿬以띾땲??</li>
-            <li><b>?곴?怨꾩닔 (correlation)</b>???④퍡 ?吏곸씠??媛뺣룄瑜? <b>?붿감?섏씡瑜?(residual return)</b>? 怨듯넻 ?붿씤???쒓굅?????⑤뒗 醫낅ぉ 怨좎쑀 ?깃낵瑜??섎??⑸땲??</li>
-            <li><b>異붿꽭 援?㈃ (trend regime)</b>, <b>蹂?숈꽦 援?㈃ (volatility regime)</b>, <b>踰좏? 援?㈃ (beta regime)</b>???⑹퀜 ?꾩옱 ?섍꼍????以꾨줈 ?붿빟?⑸땲??</li>
+            <li><b>베타 (beta)</b>는 시장 또는 섹터가 1 움직일 때 종목이 평균적으로 얼마나 크게 반응했는지 보여줍니다.</li>
+            <li><b>상관계수 (correlation)</b>는 함께 움직이는 강도를, <b>잔차수익률 (residual return)</b>은 공통 요인을 제거한 뒤 남는 종목 고유 성과를 의미합니다.</li>
+            <li><b>추세 국면 (trend regime)</b>, <b>변동성 국면 (volatility regime)</b>, <b>베타 국면 (beta regime)</b>을 합쳐 현재 환경을 한 줄로 요약합니다.</li>
           </ul>
           <p>{html.escape(ctx.commentary)}</p>
         </div>
@@ -5010,10 +5081,10 @@ def _html_factor_page(
         """
         tables_html = f"""
         <div class="tables">
-          <div class="card"><h3>?⑺꽣 ?붿빟</h3>{_safe_table(ctx.summary_table)}</div>
-          <div class="card"><h3>?댁꽍 媛?대뱶</h3>{_safe_table(ctx.interpretation_table)}</div>
-          <div class="card"><h3>理쒓렐 20嫄곕옒??遺꾪빐??/h3>{_safe_table(ctx.recent_factor_table, max_rows=120)}</div>
-          <div class="card"><h3>?곗씠???뚯뒪 硫뷀??곗씠??/h3>{_safe_table(ctx.source_table)}</div>
+          <div class="card"><h3>팩터 요약</h3>{_safe_table(ctx.summary_table)}</div>
+          <div class="card"><h3>해석 가이드</h3>{_safe_table(ctx.interpretation_table)}</div>
+          <div class="card"><h3>최근 20거래일 분해표</h3>{_safe_table(ctx.recent_factor_table, max_rows=120)}</div>
+          <div class="card"><h3>데이터 소스 메타데이터</h3>{_safe_table(ctx.source_table)}</div>
         </div>
         """
 
@@ -5024,7 +5095,7 @@ def _html_factor_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P 500 - ?⑺꽣쨌?덉쭚 ??/title>
+  <title>Stock Analysis Lab | S&P 500 - 팩터·레짐 랩</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -5032,15 +5103,15 @@ def _html_factor_page(
     body_content = f"""
   <div class="wrap">
     {_page_head(_APP_TITLE)}
-    <div class="sub">?쒖옣怨??뱁꽣 ?붿씤 遺꾪빐瑜??듯빐 醫낅ぉ???꾩옱 援?㈃???쎈뒗 ?ㅽ뿕???⑺꽣쨌?덉쭚 ?섏씠吏</div>
+    <div class="sub">시장과 섹터 요인 분해를 통해 종목의 현재 국면을 읽는 실험용 팩터·레짐 페이지</div>
     {_nav("factor", enable_technical_page=True)}
     <form class="card" method="post" action="/run_factor">
       <div class="form-grid">
-        <div><label>?곗빱</label><input type="text" name="ticker" value="{html.escape(defaults["ticker"])}" /></div>
+        <div><label>티커</label><input type="text" name="ticker" value="{html.escape(defaults["ticker"])}" /></div>
       </div>
       <div class="row">
-        <button type="submit" name="intent" value="run">?⑺꽣쨌?덉쭚 ???ㅽ뻾</button>
-        <button type="submit" name="intent" value="resolve_ticker">?뚯궗紐낆쑝濡??곗빱 李얘린</button>
+        <button type="submit" name="intent" value="run">팩터·레짐 랩 실행</button>
+        <button type="submit" name="intent" value="resolve_ticker">회사명으로 티커 찾기</button>
       </div>
     </form>
     {info_html}
@@ -5077,8 +5148,8 @@ def _html_decision_page(
     if ctx is None and not error:
         info_html += (
             "<div class=\"notice ok\">"
-            "?섏궗寃곗젙 ??쒕낫?쒕뒗 異붿꽭, 紐⑤찘?, ?곷?媛뺣룄, 由ъ뒪?? ?좏깮?곸씤 ?щТ 吏?쒕? ?④퍡 臾띠뼱 "
-            "醫낇빀 ?먮떒???뺣뒗 ?섏씠吏?낅땲?? ?꾩옱 ?ㅽ뿕?ㅼ뿉???좏깮???곗빱瑜?洹몃?濡??ъ궗?⑺빐???⑸땲??"
+            "의사결정 대시보드는 추세, 모멘텀, 상대강도, 리스크, 선택적인 재무 지표를 함께 묶어 "
+            "종합 판단을 돕는 페이지입니다. 현재 실험실에서 선택한 티커를 그대로 재사용해도 됩니다."
             "</div>"
         )
 
@@ -5100,28 +5171,28 @@ def _html_decision_page(
         """
         commentary_html = f"""
         <div class="card">
-          <h3>理쒖쥌 ?먮떒</h3>
+          <h3>최종 판단</h3>
           <p>{html.escape(ctx.final_commentary)}</p>
         </div>
         """
         charts_html = f"""
         <div class="charts">
-          <div class="card"><h3>?섏궗寃곗젙 ?먯닔 遺꾪빐</h3><img src="data:image/png;base64,{ctx.score_chart_base64}" alt="decision score chart" /></div>
-          <div class="card"><h3>異붿꽭쨌蹂쇰┛? 留λ씫</h3><img src="data:image/png;base64,{ctx.trend_chart_base64}" alt="trend context chart" /></div>
+          <div class="card"><h3>의사결정 점수 분해</h3><img src="data:image/png;base64,{ctx.score_chart_base64}" alt="decision score chart" /></div>
+          <div class="card"><h3>추세·볼린저 맥락</h3><img src="data:image/png;base64,{ctx.trend_chart_base64}" alt="trend context chart" /></div>
         </div>
         """
         reason_html = f"""
         <div class="table-grid">
-          <div class="card"><h3>?щ뒗 履?洹쇨굅</h3>{_html_reason_list(ctx.bullish_reasons)}</div>
-          <div class="card"><h3>?뚮뒗 履?洹쇨굅</h3>{_html_reason_list(ctx.bearish_reasons)}</div>
-          <div class="card"><h3>異붽? ?뺤씤 ?ъ씤??/h3>{_html_reason_list(ctx.watch_items)}</div>
+          <div class="card"><h3>사는 쪽 근거</h3>{_html_reason_list(ctx.bullish_reasons)}</div>
+          <div class="card"><h3>파는 쪽 근거</h3>{_html_reason_list(ctx.bearish_reasons)}</div>
+          <div class="card"><h3>추가 확인 포인트</h3>{_html_reason_list(ctx.watch_items)}</div>
         </div>
         """
         tables_html = f"""
         <div class="tables">
-          <div class="card"><h3>?먯닔??/h3>{_safe_table(ctx.score_table)}</div>
-          <div class="card"><h3>?좏샇 ?ㅻ깄??/h3>{_safe_table(ctx.signal_table)}</div>
-          <div class="card"><h3>?곗씠???뚯뒪 硫뷀??곗씠??/h3>{_safe_table(ctx.source_table)}</div>
+          <div class="card"><h3>점수표</h3>{_safe_table(ctx.score_table)}</div>
+          <div class="card"><h3>신호 스냅샷</h3>{_safe_table(ctx.signal_table)}</div>
+          <div class="card"><h3>데이터 소스 메타데이터</h3>{_safe_table(ctx.source_table)}</div>
         </div>
         """
 
@@ -5132,7 +5203,7 @@ def _html_decision_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P 500 - ?섏궗寃곗젙 ??쒕낫??/title>
+  <title>Stock Analysis Lab | S&P 500 - 의사결정 대시보드</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -5140,15 +5211,15 @@ def _html_decision_page(
     body_content = f"""
   <div class="wrap">
     {_page_head(_APP_TITLE)}
-    <div class="sub">異붿꽭, 紐⑤찘?, ?곷?媛뺣룄, 由ъ뒪?? 諛몃쪟?먯씠?섏쓣 ?④퍡 ?쎈뒗 醫낇빀 ?먮떒 ?섏씠吏</div>
+    <div class="sub">추세, 모멘텀, 상대강도, 리스크, 밸류에이션을 함께 읽는 종합 판단 페이지</div>
     {_nav("page6", enable_technical_page=True)}
     <form class="card" method="post" action="/run_decision">
       <div class="form-grid">
-        <div><label>?곗빱</label><input type="text" name="ticker" value="{html.escape(defaults["ticker"])}" /></div>
+        <div><label>티커</label><input type="text" name="ticker" value="{html.escape(defaults["ticker"])}" /></div>
       </div>
       <div class="row">
-        <button type="submit" name="intent" value="run">?섏궗寃곗젙 ??쒕낫???ㅽ뻾</button>
-        <button type="submit" name="intent" value="resolve_ticker">?뚯궗紐낆쑝濡??곗빱 李얘린</button>
+        <button type="submit" name="intent" value="run">의사결정 대시보드 실행</button>
+        <button type="submit" name="intent" value="resolve_ticker">회사명으로 티커 찾기</button>
       </div>
     </form>
     {info_html}
@@ -5276,7 +5347,7 @@ def _html_refresh_page(*, enable_technical_page: bool = True, is_sub_page: bool 
 <head> # Removed this section as it's now handled by the main GUI
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{_APP_TITLE} - ?곗씠??媛깆떊</title>
+  <title>{_APP_TITLE} - 데이터 갱신</title>
   <style>
     {_base_css()}
     .small {{ font-size: 12px; color: var(--muted); }}
@@ -5294,22 +5365,22 @@ def _html_refresh_page(*, enable_technical_page: bool = True, is_sub_page: bool 
 <body>
   <div class="wrap">
     {_page_head(_APP_TITLE)}
-    <div class="sub">利앸텇 ?ㅼ슫濡쒕뱶? SQLite ?낅뜲?댄듃 吏꾪뻾 ?곹솴???뺤씤?섎뒗 ?섏씠吏</div>
+    <div class="sub">증분 다운로드와 SQLite 업데이트 진행 상황을 확인하는 페이지</div>
     {_nav("page7", enable_technical_page=enable_technical_page)}
     <form class="card" method="post" action="/run_refresh">
       <div class="row">
-        <button type="submit">利앸텇 媛깆떊 ?쒖옉</button>
+        <button type="submit">증분 갱신 시작</button>
       </div>
-      <p id="refresh-meta" class="small">?곹깭: ?湲?/ ?ㅽ뻾 ID: - / ?쒖옉: - / 醫낅즺: -</p>
+      <p id="refresh-meta" class="small">상태: 대기 / 실행 ID: - / 시작: - / 종료: -</p>
     </form>
     <div class="split-grid">
       <div class="pane">
-        <h3>吏꾪뻾寃쎄낵</h3>
-        <div id="refresh-log" class="line-list"><div class="line">?꾩쭅 濡쒓렇媛 ?놁뒿?덈떎.</div></div>
+        <h3>진행경과</h3>
+        <div id="refresh-log" class="line-list"><div class="line">아직 로그가 없습니다.</div></div>
       </div>
       <div class="pane">
-        <h3>?낅뜲?댄듃紐⑸줉</h3>
-        <div id="refresh-updates" class="line-list"><div class="line">?꾩쭅 ?낅뜲?댄듃 ??ぉ???놁뒿?덈떎.</div></div>
+        <h3>업데이트목록</h3>
+        <div id="refresh-updates" class="line-list"><div class="line">아직 업데이트 항목이 없습니다.</div></div>
       </div>
     </div>
   </div>
@@ -5332,22 +5403,22 @@ def _html_refresh_page(*, enable_technical_page: bool = True, is_sub_page: bool 
       try {{
         const res = await fetch("/refresh_status", {{ cache: "no-store" }});
         if (!res.ok) {{
-          metaEl.textContent = "?곹깭: ?ㅻ쪟 (?곹깭 議고쉶 ?붾뱶?ъ씤?몄뿉 ?묎렐?????놁뒿?덈떎)";
+          metaEl.textContent = "상태: 오류 (상태 조회 엔드포인트에 접근할 수 없습니다)";
           return;
         }}
         const data = await res.json();
-        const statusText = data.status || "?湲?;
+        const statusText = data.status || "대기";
         const runId = data.run_id || "-";
         const started = data.started_at || "-";
         const finished = data.finished_at || "-";
-        metaEl.textContent = "?곹깭: " + statusText + " / ?ㅽ뻾 ID: " + runId + " / ?쒖옉: " + started + " / 醫낅즺: " + finished;
+        metaEl.textContent = "상태: " + statusText + " / 실행 ID: " + runId + " / 시작: " + started + " / 종료: " + finished;
 
         const logCount = Number(data.log_count || 0);
         if (logCount !== lastLogCount) {{
           lastLogCount = logCount;
           const logs = Array.isArray(data.logs) ? data.logs : [];
           if (logs.length === 0) {{
-            logEl.innerHTML = "<div class='line'>?꾩쭅 濡쒓렇媛 ?놁뒿?덈떎.</div>";
+            logEl.innerHTML = "<div class='line'>아직 로그가 없습니다.</div>";
           }} else {{
             logEl.innerHTML = logs.map((line) => "<div class='line'>" + esc(line) + "</div>").join("");
           }}
@@ -5359,7 +5430,7 @@ def _html_refresh_page(*, enable_technical_page: bool = True, is_sub_page: bool 
         if (updateKey !== lastUpdateKey) {{
           lastUpdateKey = updateKey;
           if (items.length === 0) {{
-            updatesEl.innerHTML = "<div class='line'>?꾩쭅 ?낅뜲?댄듃 ??ぉ???놁뒿?덈떎.</div>";
+            updatesEl.innerHTML = "<div class='line'>아직 업데이트 항목이 없습니다.</div>";
           }} else {{
             updatesEl.innerHTML = items.map((item) => {{
               const line = (item.dataset || "-")
@@ -5371,7 +5442,7 @@ def _html_refresh_page(*, enable_technical_page: bool = True, is_sub_page: bool 
           }}
         }}
       }} catch (err) {{
-        metaEl.textContent = "?곹깭: ?ㅻ쪟 (" + String(err) + ")";
+        metaEl.textContent = "상태: 오류 (" + String(err) + ")";
       }}
     }}
 
@@ -5389,7 +5460,7 @@ def _html_refresh_history_page(is_sub_page: bool = False) -> str:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{_APP_TITLE} - ?곗씠??媛깆떊 ?대젰</title>
+  <title>{_APP_TITLE} - 데이터 갱신 이력</title>
   <style>
     {_base_css()}
     .table-wrap {{ overflow: auto; max-height: 360px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }}
@@ -5398,11 +5469,11 @@ def _html_refresh_history_page(is_sub_page: bool = False) -> str:
 </head>
 <body>
   <div class="wrap">
-    {_page_head("?곗씠??媛깆떊 ?대젰")}
-    <div class="sub">?ㅽ뻾 ?붿빟怨??낅뜲?댄듃???곗씠???좎쭨瑜??뺤씤?섎뒗 ?섏씠吏</div>
+    {_page_head("데이터 갱신 이력")}
+    <div class="sub">실행 요약과 업데이트된 데이터 날짜를 확인하는 페이지</div>
     <div class="card">
-      <h3>?ㅽ뻾 ?붿빟</h3>
-      <p id="history-generated" class="caption">?앹꽦 ?쒓컖: -</p>
+      <h3>실행 요약</h3>
+      <p id="history-generated" class="caption">생성 시각: -</p>
       <div class="table-wrap">
         <table class="data-table">
           <thead>
@@ -5411,11 +5482,11 @@ def _html_refresh_history_page(is_sub_page: bool = False) -> str:
               <th>Status</th>
               <th>Started</th>
               <th>Finished</th>
-              <th>S&P 500 Old Max Date</th>
-              <th>S&P 500 New Max Date</th>
+              <th>SP500 Old Max Date</th>
+              <th>SP500 New Max Date</th>
               <th>Financial SQLite Added</th>
-              <th>S&P 500 SQLite Added</th>
-              <th>S&P 500 MCap Updates</th>
+              <th>SP500 SQLite Added</th>
+              <th>SP500 MCap Updates</th>
               <th>Error</th>
             </tr>
           </thead>
@@ -5424,7 +5495,7 @@ def _html_refresh_history_page(is_sub_page: bool = False) -> str:
       </div>
     </div>
     <div class="card">
-      <h3>?낅뜲?댄듃 ??ぉ(理쒖떊 ?좎쭨 ?ы븿)</h3>
+      <h3>업데이트 항목(최신 날짜 포함)</h3>
       <div class="table-wrap">
         <table class="data-table">
           <thead>
@@ -5460,7 +5531,7 @@ def _html_refresh_history_page(is_sub_page: bool = False) -> str:
         const data = await res.json();
         const runs = Array.isArray(data.runs) ? data.runs : [];
 
-        document.getElementById("history-generated").textContent = "?앹꽦 ?쒓컖: " + (data.generated_at || "-");
+        document.getElementById("history-generated").textContent = "생성 시각: " + (data.generated_at || "-");
 
         const runRows = runs.map((run) => `
           <tr>
@@ -5476,7 +5547,7 @@ def _html_refresh_history_page(is_sub_page: bool = False) -> str:
             <td>${{esc(run.error_message)}}</td>
           </tr>
         `).join("");
-        document.getElementById("run-history-body").innerHTML = runRows || "<tr><td colspan='10'>?꾩쭅 媛깆떊 ?대젰???놁뒿?덈떎.</td></tr>";
+        document.getElementById("run-history-body").innerHTML = runRows || "<tr><td colspan='10'>아직 갱신 이력이 없습니다.</td></tr>";
 
         const updateRows = [];
         for (const run of runs) {{
@@ -5494,7 +5565,7 @@ def _html_refresh_history_page(is_sub_page: bool = False) -> str:
             `);
           }}
         }}
-        document.getElementById("update-history-body").innerHTML = updateRows.join("") || "<tr><td colspan='6'>?꾩쭅 ?낅뜲?댄듃???곗씠?곗뀑???놁뒿?덈떎.</td></tr>";
+        document.getElementById("update-history-body").innerHTML = updateRows.join("") || "<tr><td colspan='6'>아직 업데이트된 데이터셋이 없습니다.</td></tr>";
       }} catch (err) {{
         return;
       }}
@@ -5676,7 +5747,7 @@ def launch_stock_forecast_web_gui(
                 )
                 return
 
-            # ?몃? ?곗빱 ?붿껌 泥섎━ (?? ?ticker=AAPL&intent=run)
+            # 외부 티커 요청 처리 (예: ?ticker=AAPL&intent=run)
             ticker_arg = query.get("ticker", [None])[0] # This logic needs to be moved to main web_gui
             if ticker_arg and path in {"/", "/index.html", "/forecast", "/page1", "/page6", "/decision"}:
                 clean_t = ticker_arg.strip().upper()
@@ -5704,7 +5775,7 @@ def launch_stock_forecast_web_gui(
                             )
                             self.__class__.state_dec_error = None
                         else:
-                            # 湲곕낯 ?덉륫 ?섏씠吏 ?붿껌? forecast 而⑦뀓?ㅽ듃瑜?利됱떆 怨꾩궛?⑸땲??
+                            # 기본 예측 페이지 요청은 forecast 컨텍스트를 즉시 계산합니다.
                             self.__class__.state_ctx = _run_once(self.__class__.state_form)
                             self.__class__.state_error = None
                     except Exception as exc:
@@ -5718,7 +5789,7 @@ def launch_stock_forecast_web_gui(
                             self.__class__.state_ctx = None
                             self.__class__.state_error = str(exc)
 
-                # 猷⑦듃 ?묎렐 ??遺꾩꽍 寃곌낵 ?섏씠吏濡??먮룞 ?꾪솚
+                # 루트 접근 시 분석 결과 페이지로 자동 전환
                 if path in {"/", "/index.html"}:
                     path = "/page6"
 
@@ -6593,7 +6664,7 @@ def launch_stock_forecast_web_gui(
             root_dir = _project_root_dir()
             metrics_csv = root_dir / "data" / "sp500_all_metrics_prices.csv"
             latest_date = _latest_date_from_csv(metrics_csv)
-            latest_summary = f"媛寃??곗씠??理쒖떊?? {latest_date or '-'}"
+            latest_summary = f"가격 데이터 최신일: {latest_date or '-'}"
             with cls.refresh_lock:
                 return {
                     "status": cls.state_refresh_status,

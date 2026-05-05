@@ -51,6 +51,7 @@ class Settings:
     access_mode: str = os.getenv("KEUMJM_ACCESS_MODE", "lan").strip().lower()
     allowed_cidrs: tuple[str, ...] = _env_list("KEUMJM_ALLOWED_CIDRS")
     enable_docs: bool = _env_bool("KEUMJM_ENABLE_DOCS", True)
+    enable_macro: bool = _env_bool("ENABLE_MACRO", False)
     gzip_minimum_size: int = _env_int("KEUMJM_GZIP_MINIMUM_SIZE", 1024)
     gzip_compresslevel: int = _env_int("KEUMJM_GZIP_COMPRESSLEVEL", 5)
     auth_enabled: bool = _env_bool("KEUMJM_AUTH_ENABLED", True)

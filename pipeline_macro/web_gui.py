@@ -12,6 +12,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from pipeline_common.notebook_models import select_quarter_snapshots
+from pipeline_stock.web_gui import _shared_theme_root_css
 
 from .analysis import MacroDashboard, build_macro_dashboard
 
@@ -47,14 +48,15 @@ def _fmt(value: object, ndigits: int = 2) -> str:
     return html.escape(str(value))
 
 
-def _table(frame: pd.DataFrame, *, max_rows: int = 80) -> str:
+def _table(frame: pd.DataFrame, *, max_rows: int = 80, table_class: str = "") -> str:
     if frame is None or frame.empty:
         return "<p class='service-muted'>표시할 데이터가 없습니다.</p>"
     show = frame.head(max_rows).copy()
     for col in show.columns:
         if pd.api.types.is_numeric_dtype(show[col]):
             show[col] = show[col].map(lambda x: "-" if pd.isna(x) else f"{float(x):,.2f}")
-    return f"<div class='service-table-wrap'>{show.to_html(index=False, border=0, classes='service-table')}</div>"
+    classes = " ".join(part for part in ["service-table", table_class.strip()] if part)
+    return f"<div class='service-table-wrap'>{show.to_html(index=False, border=0, classes=classes)}</div>"
 
 
 def _macro_nav(active: str) -> str:
@@ -264,7 +266,7 @@ def _rates_page(dashboard: MacroDashboard) -> str:
     {_hero(dashboard)}
     {_macro_nav("rates")}
     {_page_charts("rates", dashboard)}
-    <section class="service-card"><h2>금리와 커브</h2>{_table(dashboard.rates)}</section>
+    <section class="service-card"><h2>금리와 커브</h2>{_table(dashboard.rates, table_class="macro-rates-table")}</section>
     <section class="service-card"><h2>해석</h2><p class="service-muted">2년 금리는 정책 기대, 10년 금리는 성장/물가 기대, 10Y-2Y 스프레드는 경기 사이클 신호로 봅니다.</p></section>
     """
 
@@ -312,6 +314,13 @@ def render_body(page: str, *, start_date: str | None = None, lookback_days: int 
     }[active](dashboard)
     return f"""
     <style>      
+      :root {{
+        {_shared_theme_root_css()}
+      }}
+      body {{ background: var(--bg); color: var(--text); }}
+      .service-main {{ color: var(--text); }}
+      .service-nav a {{ color: var(--brand); border-color: var(--line); }}
+      .service-nav a.active {{ background: var(--brand); color: #fff; border-color: var(--brand); }}
       .macro-nav {{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }}
       .macro-nav a {{ text-decoration:none; color:var(--brand); border:1px solid var(--line); background:#fff; border-radius:999px; padding:7px 12px; font-size:13px; }}
       .macro-nav a.active {{ background:var(--brand); color:#fff; border-color:var(--brand); }}
@@ -335,6 +344,8 @@ def render_body(page: str, *, start_date: str | None = None, lookback_days: int 
       .macro-score-track {{ height:10px; background:#e5e7eb; border-radius:999px; overflow:hidden; }}
       .macro-score-track span {{ display:block; height:100%; background:var(--accent); }}
       .macro-score-value {{ font-variant-numeric:tabular-nums; text-align:right; font-size:12px; color:var(--muted); }}
+      .macro-rates-table th:last-child,
+      .macro-rates-table td:last-child {{ min-width:22rem; max-width:32rem; white-space:normal; overflow-wrap:break-word; word-break:keep-all; }}
       @media (max-width:900px) {{
         .macro-hero {{ flex-direction:column; }}
         .macro-metrics {{ width:100%; min-width:0; }}

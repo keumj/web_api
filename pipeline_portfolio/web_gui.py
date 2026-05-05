@@ -97,7 +97,7 @@ def _nav(active: str, ctx: _PageContext) -> str:
         css = "active" if page_id == active else ""
         links.append(f'<a class="{css}" href="{final_href}">{html.escape(label)}</a>')
     
-    if os.getenv("ENABLE_MACRO", "false").lower() == "true":
+    if os.getenv("ENABLE_MACRO", "").strip().lower() in {"1", "true", "yes", "on"}:
         links.append('<a class="" href="/macro/overview">거시분석</a>')
     return '<div class="nav">' + "".join(links) + "</div>"
 
@@ -151,8 +151,8 @@ def _base_css() -> str:
     .notice.ok { background: var(--ok-bg); border: 1px solid var(--ok-line); }
     .notice.err { background: var(--err-bg); border: 1px solid var(--err-line); }
     .table-wrap { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .data-table { width: 100%; min-width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.45; }
-    .data-table th, .data-table td { border: 1px solid var(--line); padding: 8px; text-align: left; vertical-align: top; white-space: normal; overflow-wrap: anywhere; word-break: normal; }
+    .data-table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.45; }
+    .data-table th, .data-table td { border: 1px solid var(--line); padding: 8px; text-align: left; vertical-align: top; white-space: normal; overflow-wrap: break-word; word-break: keep-all; }
     .small { font-size: 12px; color: var(--muted); }
     .split-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .pane { min-width: 0; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }

@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.routers.auth import _safe_next, auth_panel
 from app.services import auth_service
+from app.settings import settings
 from app.web import shell
 
 router = APIRouter()
@@ -28,6 +29,16 @@ def index(request: Request, next: str | None = None, auth_error: str | None = No
         if user is not None and user.is_admin
         else ""
     )
+    macro_card = (
+        """
+        <a class="service-card" href="/macro/overview">
+          <h3>거시분석</h3>
+          <p>금리, 달러, 위험신호, 섹터 플레이북을 종목/뉴스 분석의 배경 환경으로 제공합니다.</p>
+        </a>
+        """
+        if settings.enable_macro
+        else ""
+    )
     body = f"""
     <div class="service-stack">
       <div class="service-card">
@@ -45,12 +56,9 @@ def index(request: Request, next: str | None = None, auth_error: str | None = No
         </a>
         <a class="service-card" href="/stock-news/overview">
           <h3>뉴스 분석</h3>
-          <p>뉴스 기반 이벤트, 섹터 전이, 토픽, 가격 반응 분석을 실행합니다.</p>
+          <p>뉴스 기반 이벤트 스터디, 섹터 전이, 토픽, 가격 반응 분석을 실행합니다.</p>
         </a>
-        <a class="service-card" href="/macro/overview">
-          <h3>거시분석</h3>
-          <p>금리, 달러, 위험선호, 섹터 플레이북을 종목/뉴스 분석의 배경 환경으로 점검합니다.</p>
-        </a>
+        {macro_card}
         {admin_card}
       </div>
       {auth_panel(next_url=next_url, user=user, error=error)}
@@ -97,6 +105,8 @@ def stock_news_home(request: Request) -> RedirectResponse:
 
 @router.get("/macro")
 def macro_home(request: Request) -> RedirectResponse:
+    if not settings.enable_macro:
+        return RedirectResponse("/", status_code=303)
     return _redirect_with_query(request, "/macro/overview")
 
 
