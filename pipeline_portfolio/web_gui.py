@@ -96,7 +96,9 @@ def _nav(active: str, ctx: _PageContext) -> str:
         final_href = f"{href}{separator}{_range_query(ctx)}"
         css = "active" if page_id == active else ""
         links.append(f'<a class="{css}" href="{final_href}">{html.escape(label)}</a>')
-    links.append('<a class="" href="/macro/overview">거시분석</a>')
+    
+    if os.getenv("ENABLE_MACRO", "false").lower() == "true":
+        links.append('<a class="" href="/macro/overview">거시분석</a>')
     return '<div class="nav">' + "".join(links) + "</div>"
 
 
