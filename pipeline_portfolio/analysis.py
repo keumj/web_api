@@ -364,6 +364,49 @@ def _normalize_trades_frame(frame: pd.DataFrame) -> pd.DataFrame:
     return frame
 
 
+def _position_quantity(positions: pd.DataFrame, ticker: str) -> float:
+    if positions.empty or "ticker" not in positions.columns or "net_quantity" not in positions.columns:
+        return 0.0
+    matched = positions.loc[positions["ticker"].astype(str).str.upper() == str(ticker or "").strip().upper(), "net_quantity"]
+    if matched.empty:
+        return 0.0
+    return float(pd.to_numeric(matched, errors="coerce").fillna(0.0).iloc[0])
+
+
+def _cash_balance_from_positions(positions: pd.DataFrame) -> float:
+    return _position_quantity(positions, "CASH")
+
+
+def _build_virtual_cash_rebalance_trade(
+    *,
+    cash_balance: float,
+    trade_id: int,
+    trade_ts: pd.Timestamp,
+    forecast_horizon_days: int,
+) -> pd.DataFrame:
+    if abs(float(cash_balance)) < 1e-9:
+        return pd.DataFrame()
+    side = "BUY" if float(cash_balance) < 0 else "SELL"
+    quantity = abs(float(cash_balance))
+    return pd.DataFrame(
+        [
+            {
+                "id": int(trade_id),
+                "trade_date": trade_ts,
+                "ticker": "CASH",
+                "side": side,
+                "quantity": quantity,
+                "price": 1.0,
+                "fees": 0.0,
+                "notes": f"virtual_cash_rebalance_{forecast_horizon_days}d",
+                "created_at": trade_ts.strftime("%Y-%m-%d %H:%M:%S"),
+                "gross_amount": quantity,
+                "net_cash_flow": quantity if side == "BUY" else -quantity,
+            }
+        ]
+    )
+
+
 def _load_component_frame(max_symbols: int = 0) -> tuple[pd.DataFrame, str]:
     requested = int(max_symbols)
     load_count = requested if requested > 0 else 10_000
@@ -565,15 +608,15 @@ def _current_positions_from_trades(
             item["cost_basis"] = next_qty * next_avg
             cash_balance -= (qty * price + fees)
         else:
-            sell_qty = min(qty, current_qty) if current_qty > 0 else qty
-            realized = (price - current_avg) * sell_qty - fees
-            next_qty = current_qty - qty
-            next_qty = max(next_qty, 0.0)
+            sell_qty = min(qty, current_qty) if current_qty > 0 else 0.0
+            realized = (price - current_avg) * sell_qty - fees if sell_qty > 0 else 0.0
+            next_qty = max(current_qty - sell_qty, 0.0)
             item["realized_pnl"] = float(item["realized_pnl"]) + realized
             item["net_quantity"] = next_qty
             item["cost_basis"] = next_qty * current_avg
             item["avg_cost"] = current_avg if next_qty > 0 else 0.0
-            cash_balance += (qty * price - fees)
+            if sell_qty > 0:
+                cash_balance += (sell_qty * price - fees)
 
         item["trade_count"] = int(item["trade_count"]) + 1
         item["last_trade_date"] = pd.Timestamp(row.trade_date)
@@ -2407,6 +2450,15 @@ def analyze_virtual_trade(
         start_date=start_date,
         end_date=end_date,
     )
+    held_quantity_before = _position_quantity(before.positions, ticker_clean)
+    before_cash_balance = _cash_balance_from_positions(before.positions)
+    if side_clean == "SELL":
+        if held_quantity_before <= 0:
+            raise ValueError(f"{ticker_clean} is not currently held, so SELL cannot be simulated")
+        if qty_value - held_quantity_before > 1e-9:
+            raise ValueError(
+                f"SELL quantity exceeds current holding ({held_quantity_before:,.4f} shares)"
+            )
     db_now = _get_db_max_date(shared_db)
     trades = before.trades.copy()
     if end_date:
@@ -2471,12 +2523,27 @@ def analyze_virtual_trade(
     positions_after_raw = _current_positions_from_trades(combined, sector_map=sector_map)
     positions_after, as_of_date = _build_positions_frame(positions_after_raw, close_history=close_history)
     holdings_after = _build_holdings_performance(positions_after, calendar_close_history, selected_start_ts=start_ts)
+    auto_cash_balance = _cash_balance_from_positions(positions_after_raw)
+    auto_cash_action = "-"
+    auto_cash_amount = 0.0
+    if abs(auto_cash_balance) > 1e-9:
+        auto_cash_action = "AUTO_DEPOSIT" if auto_cash_balance < 0 else "AUTO_WITHDRAW"
+        auto_cash_amount = abs(auto_cash_balance)
+        auto_cash_trade = _build_virtual_cash_rebalance_trade(
+            cash_balance=auto_cash_balance,
+            trade_id=int((combined["id"].max() + 1) if not combined.empty else 1),
+            trade_ts=end_ts,
+            forecast_horizon_days=forecast_horizon_days,
+        )
+        combined = pd.concat([combined, auto_cash_trade], ignore_index=True)
+        positions_after_raw = _current_positions_from_trades(combined, sector_map=sector_map)
+        positions_after, as_of_date = _build_positions_frame(positions_after_raw, close_history=close_history)
+        holdings_after = _build_holdings_performance(positions_after, calendar_close_history, selected_start_ts=start_ts)
+    final_cash_balance = _cash_balance_from_positions(positions_after_raw)
 
-    # 가상 거래 후 현금 잔고 체크
     cash_warning = ""
-    cash_row_after = positions_after_raw[positions_after_raw["ticker"] == "CASH"]
-    if not cash_row_after.empty and float(cash_row_after.iloc[0]["net_quantity"]) < 0:
-        cash_warning = f"가상 거래 경고: 실행 시 예상 현금 잔고가 마이너스(${abs(float(cash_row_after.iloc[0]['net_quantity'])):,.2f})가 됩니다."
+    if abs(final_cash_balance) > 1e-6:
+        cash_warning = f"Virtual trade cash rebalance did not fully settle cash (${final_cash_balance:,.2f})."
 
     portfolio_after = _portfolio_return_series(close_history, positions_after)
     portfolio_calendar_after = _portfolio_return_series(calendar_close_history, positions_after)
@@ -2559,8 +2626,15 @@ def analyze_virtual_trade(
             {
                 "ticker": ticker_clean,
                 "side": side_clean,
+                "held_quantity_before": held_quantity_before,
                 "quantity": qty_value,
                 "trade_price": trade_price,
+                "gross_trade_amount": qty_value * trade_price,
+                "fees": float(fees),
+                "before_cash_balance": before_cash_balance,
+                "auto_cash_action": auto_cash_action,
+                "auto_cash_amount": auto_cash_amount,
+                "final_cash_balance": final_cash_balance,
                 "forecast_horizon_days": int(forecast_horizon_days),
                 "forecast_return_pct": forecast_return * 100.0,
                 "forecast_price": forecast_price,
