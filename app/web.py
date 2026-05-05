@@ -31,7 +31,7 @@ def shell(title: str, body: str, *, active: str = "portfolio", admin: bool = Fal
     header_display = "display:none;" if start_page_only else "block"
     top_nav_style = "display:none;" if start_page_only else ""
     brand_style = "display:none;" if start_page_only else ""
-    return_button = '<div class="service-nav" style="margin-bottom:15px; justify-content: flex-start;"><a href="/">기본페이지로 돌아가기</a></div>' if start_page_only else ""
+    return_button = '<div class="service-nav" style="margin-bottom:15px; justify-content: flex-start;"><a href="/">시작 페이지로 돌아가기</a></div>' if start_page_only else ""
     default_nav = f"""
         <a class="{active_class["portfolio"]}" href="/portfolio/overview">포트폴리오</a>
         <a class="{active_class["stock"]}" href="/stock/forecast">종목 분석</a>
