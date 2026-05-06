@@ -11,6 +11,7 @@ from pathlib import Path
 import pandas as pd
 
 from app.settings import settings
+from app.services import refresh_state
 from app.web import shell
 from pipeline_portfolio import web_gui as portfolio_web
 
@@ -261,6 +262,13 @@ def _append(job_id: str, line: str) -> None:
         state.logs = state.logs[-300:]
 
 
+def _record_refresh_state(event: str, *, job_id: str, exit_code: int | None = None) -> None:
+    try:
+        refresh_state.record_state(event, source=f"web:{job_id}", exit_code=exit_code)
+    except Exception as exc:
+        _append(job_id, f"[refresh:{job_id}] state record failed: {type(exc).__name__}: {exc}")
+
+
 def _run_job(job: RefreshJob) -> None:
     root = settings.project_root
     exit_code: int | None = None
@@ -268,6 +276,7 @@ def _run_job(job: RefreshJob) -> None:
         if not job.command:
             raise FileNotFoundError(f"No command configured for {job.job_id}")
         _append(job.job_id, f"[refresh:{job.job_id}] started {' '.join(job.command)}")
+        _record_refresh_state("started", job_id=job.job_id)
         proc = subprocess.Popen(
             job.command,
             cwd=str(root),
@@ -292,6 +301,7 @@ def _run_job(job: RefreshJob) -> None:
             state.updated_items = [dict(item) for item in snap["items"]]
             state.latest_items = [dict(item) for item in snap["items"]]
             state.latest_summary = str(snap["summary"])
+        _record_refresh_state("finished", job_id=job.job_id, exit_code=exit_code)
         _append(job.job_id, f"[refresh:{job.job_id}] finished with exit_code={exit_code}")
     except Exception as exc:
         snap = _snapshot(job.job_id)
@@ -303,6 +313,7 @@ def _run_job(job: RefreshJob) -> None:
             state.updated_items = [dict(item) for item in snap["items"]]
             state.latest_items = [dict(item) for item in snap["items"]]
             state.latest_summary = str(snap["summary"])
+        _record_refresh_state("finished", job_id=job.job_id, exit_code=exit_code if exit_code is not None else 1)
         _append(job.job_id, f"[refresh:{job.job_id}] failed: {type(exc).__name__}: {exc}")
     finally:
         if exit_code is None:
