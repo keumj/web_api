@@ -16,16 +16,17 @@ from pipeline_portfolio.analysis import (
     DEFAULT_SECTOR_CAP_PCT,
     add_trade,
     analyze_virtual_trade,
+    analyze_virtual_trades,
     build_portfolio_dashboard,
     build_portfolio_optimization,
     delete_trade,
     _get_db_max_date,
 )
 
-from app.web import add_start_page_link
+from app.web import add_start_page_link, inject_busy_cursor_overlay
 from app.services.dataframe import frame_records
 from app.services.auth_service import AuthUser, portfolio_db_for_user
-from app.services import db_service
+from app.services import db_service, portfolio_snapshot_service
 
 
 DEFAULT_START_DATE = "2025-12-31"
@@ -78,7 +79,7 @@ def _prepare_portfolio_html(page: str, html: str, *, user: AuthUser | None = Non
     if soup is not None:
         html = str(soup)
     if page not in HISTORICAL_PAGES:
-        return html
+        return inject_busy_cursor_overlay(html)
 
     latest_db_date = _latest_db_date()
     soup = BeautifulSoup(html, "html.parser")
@@ -107,7 +108,7 @@ def _prepare_portfolio_html(page: str, html: str, *, user: AuthUser | None = Non
             note["data-historical-note"] = "1"
             note.string = f"최신 DB 날짜는 {latest_db_date}이며, 동 일자를 기준으로 분석합니다."
             card.append(note)
-    return str(soup)
+    return inject_busy_cursor_overlay(str(soup))
 
 
 def _portfolio_db(user: AuthUser | None) -> str | None:
@@ -131,6 +132,73 @@ def _latest_db_date() -> str:
 
 def _latest_db_range(lookback_days: int | None = None) -> PortfolioRange:
     return resolve_range(DEFAULT_START_DATE, _latest_db_date(), lookback_days)
+
+
+def _snapshot_range_info(date_range: PortfolioRange) -> dict[str, object]:
+    return {
+        "lookback_days": int(date_range.lookback_days),
+        "start_date": str(date_range.start_date),
+        "end_date": str(date_range.end_date),
+    }
+
+
+def _snapshot_notice(updated_at: str | None, label: str) -> str:
+    stamp = str(updated_at or "").strip()
+    if stamp:
+        return f"저장된 최근 {label} 결과를 불러왔습니다. 마지막 저장: {stamp}"
+    return f"저장된 최근 {label} 결과를 불러왔습니다."
+
+
+def _range_from_snapshot(range_info: dict[str, object] | None, fallback: PortfolioRange) -> PortfolioRange:
+    if not isinstance(range_info, dict):
+        return fallback
+    try:
+        return PortfolioRange(
+            lookback_days=max(int(range_info.get("lookback_days", fallback.lookback_days) or fallback.lookback_days), 21),
+            start_date=str(range_info.get("start_date", fallback.start_date) or fallback.start_date),
+            end_date=str(range_info.get("end_date", fallback.end_date) or fallback.end_date),
+        )
+    except Exception:
+        return fallback
+
+
+def _parse_virtual_trade_requests(form: dict[str, str]) -> list[dict[str, object]]:
+    trade_lines = str(form.get("trade_lines", "") or "").strip()
+    if trade_lines:
+        requests: list[dict[str, object]] = []
+        for line_no, raw_line in enumerate(trade_lines.splitlines(), start=1):
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = [part.strip() for part in line.split(",")]
+            if len(parts) < 3 or len(parts) > 5:
+                raise ValueError(
+                    f"trade_lines line {line_no} must be 'ticker,side,quantity[,price][,fees]'"
+                )
+            ticker, side, quantity = parts[0], parts[1], parts[2]
+            price = parts[3] if len(parts) >= 4 and parts[3] != "" else None
+            fees = parts[4] if len(parts) >= 5 and parts[4] != "" else 0.0
+            requests.append(
+                {
+                    "ticker": ticker,
+                    "side": side,
+                    "quantity": float(quantity),
+                    "price": None if price is None else float(price),
+                    "fees": float(fees),
+                }
+            )
+        if not requests:
+            raise ValueError("trade_lines did not contain any usable trade rows")
+        return requests
+    return [
+        {
+            "ticker": form.get("ticker", ""),
+            "side": form.get("side", ""),
+            "quantity": float(form.get("quantity", "0") or 0),
+            "price": float(form["price"]) if str(form.get("price", "")).strip() else None,
+            "fees": float(form.get("fees", "0") or 0),
+        }
+    ]
 
 
 def resolve_range(
@@ -196,6 +264,10 @@ def render_page(
     if page in HISTORICAL_PAGES:
         date_range = _latest_db_range(lookback_days)
     dashboard = None
+    optimization = None
+    virtual_result = None
+    optimization_snapshot = None
+    snapshot_message = None
     page_error = error
     if run:
         try:
@@ -206,15 +278,34 @@ def render_page(
                 start_date=date_range.start_date,
                 end_date=date_range.end_date,
             )
+            if user is not None:
+                portfolio_snapshot_service.save_dashboard_snapshot(
+                    user.id,
+                    dashboard,
+                    range_info=_snapshot_range_info(date_range),
+                )
         except Exception as exc:
             page_error = f"{type(exc).__name__}: {exc}\n\n{traceback.format_exc(limit=3)}"
+    elif user is not None:
+        dashboard_snapshot = portfolio_snapshot_service.load_dashboard_snapshot(user.id)
+        if dashboard_snapshot is not None:
+            dashboard = dashboard_snapshot.payload
+            date_range = _range_from_snapshot(dashboard_snapshot.range_info, date_range)
+            snapshot_message = _snapshot_notice(dashboard_snapshot.updated_at, "포트폴리오 분석")
+        if page == "virtual-trade":
+            virtual_snapshot = portfolio_snapshot_service.load_virtual_trade_snapshot(user.id)
+            if virtual_snapshot is not None:
+                virtual_result = virtual_snapshot.payload
+                date_range = _range_from_snapshot(virtual_snapshot.range_info, date_range)
+                snapshot_message = _snapshot_notice(virtual_snapshot.updated_at, "가상거래 분석")
     ctx = portfolio_web._PageContext(
         dashboard=dashboard,
         lookback_days=date_range.lookback_days,
         start_date=date_range.start_date,
         end_date=date_range.end_date,
-        message=message,
+        message=message or snapshot_message,
         error=page_error,
+        virtual_result=virtual_result,
     )
     renderers: dict[str, Callable[[portfolio_web._PageContext], str]] = {
         "data-entry": portfolio_web._data_entry_page,
@@ -225,7 +316,6 @@ def render_page(
         "virtual-trade": portfolio_web._virtual_trade_page,
     }
     if page == "optimization":
-        optimization = None
         if run and page_error is None:
             try:
                 optimization = build_portfolio_optimization(
@@ -239,16 +329,41 @@ def render_page(
                     max_position_pct=max_position_pct,
                     cash_buffer_pct=cash_buffer_pct,
                 )
+                if user is not None:
+                    portfolio_snapshot_service.save_optimization_snapshot(
+                        user.id,
+                        optimization,
+                        range_info=_snapshot_range_info(date_range),
+                        optimization_params={
+                            "universe_size": universe_size,
+                            "sector_cap_pct": sector_cap_pct,
+                            "max_position_pct": max_position_pct,
+                            "cash_buffer_pct": cash_buffer_pct,
+                        },
+                    )
             except Exception as exc:
                 page_error = f"{type(exc).__name__}: {exc}\n\n{traceback.format_exc(limit=3)}"
+        elif user is not None:
+            optimization_snapshot = portfolio_snapshot_service.load_optimization_snapshot(user.id)
+            if optimization_snapshot is not None:
+                optimization = optimization_snapshot.payload
+                date_range = _range_from_snapshot(optimization_snapshot.range_info, date_range)
+                ctx.lookback_days = date_range.lookback_days
+                ctx.start_date = date_range.start_date
+                ctx.end_date = date_range.end_date
+                ctx.message = message or _snapshot_notice(optimization_snapshot.updated_at, "최적화")
         ctx.error = page_error
         ctx.optimization = optimization
-        ctx.optimization_params = {
-            "universe_size": universe_size,
-            "sector_cap_pct": sector_cap_pct,
-            "max_position_pct": max_position_pct,
-            "cash_buffer_pct": cash_buffer_pct,
-        }
+        ctx.optimization_params = (
+            dict(optimization_snapshot.extra.get("optimization_params", {}))
+            if optimization_snapshot is not None and optimization_snapshot.extra
+            else {
+                "universe_size": universe_size,
+                "sector_cap_pct": sector_cap_pct,
+                "max_position_pct": max_position_pct,
+                "cash_buffer_pct": cash_buffer_pct,
+            }
+        )
         return _prepare_portfolio_html(page, portfolio_web._optimization_page(ctx), user=user)
     return _prepare_portfolio_html(page, renderers.get(page, portfolio_web._overview_page)(ctx), user=user)
 
@@ -276,14 +391,10 @@ def remove_trade(trade_id: int, *, user: AuthUser | None = None) -> None:
 def virtual_trade_payload(form: dict[str, str], *, user: AuthUser | None = None) -> dict[str, object]:
     _require_user_for_remote_db(user)
     date_range = _latest_db_range(int(form.get("lookback_days", DEFAULT_LOOKBACK_DAYS) or DEFAULT_LOOKBACK_DAYS))
-    result = analyze_virtual_trade(
+    result = analyze_virtual_trades(
+        trade_requests=_parse_virtual_trade_requests(form),
         portfolio_db=_portfolio_db(user),
         portfolio_user_id=_portfolio_user_id(user),
-        ticker=form.get("ticker", ""),
-        side=form.get("side", ""),
-        quantity=float(form.get("quantity", "0") or 0),
-        price=float(form["price"]) if str(form.get("price", "")).strip() else None,
-        fees=float(form.get("fees", "0") or 0),
         lookback_days=date_range.lookback_days,
         start_date=date_range.start_date,
         end_date=date_range.end_date,
@@ -319,19 +430,21 @@ def render_virtual_trade(form: dict[str, str], *, user: AuthUser | None = None) 
         )
     except Exception as exc:
         dashboard_error = f"{type(exc).__name__}: {exc}"
-    result = analyze_virtual_trade(
+    result = analyze_virtual_trades(
+        trade_requests=_parse_virtual_trade_requests(form),
         portfolio_db=_portfolio_db(user),
         portfolio_user_id=_portfolio_user_id(user),
-        ticker=form.get("ticker", ""),
-        side=form.get("side", ""),
-        quantity=float(form.get("quantity", "0") or 0),
-        price=float(form["price"]) if str(form.get("price", "")).strip() else None,
-        fees=float(form.get("fees", "0") or 0),
         lookback_days=date_range.lookback_days,
         start_date=date_range.start_date,
         end_date=date_range.end_date,
         forecast_horizon_days=int(form.get("forecast_horizon_days", "10") or 10),
     )
+    if user is not None:
+        portfolio_snapshot_service.save_virtual_trade_snapshot(
+            user.id,
+            result,
+            range_info=_snapshot_range_info(date_range),
+        )
     html = portfolio_web._virtual_trade_page(
         portfolio_web._PageContext(
             dashboard=dashboard,

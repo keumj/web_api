@@ -4155,7 +4155,6 @@ def _nav(active: str, *, enable_technical_page: bool = False, is_sub_page: bool 
     if is_sub_page: # Sub-pages should not render their own navigation
         return ""
     links = [
-        f'<a class="{c1}" href="/forecast">주가 예측</a>',
         f'<a class="{c2}" href="/page2">재무제표·밸류에이션</a>',
     ]
     if enable_technical_page:
@@ -4166,11 +4165,10 @@ def _nav(active: str, *, enable_technical_page: bool = False, is_sub_page: bool 
                 f'<a class="{c5}" href="/page5">리스크 대시보드</a>',
                 f'<a class="{cf}" href="/factor-regime">팩터·레짐 랩</a>',
                 f'<a class="{c6}" href="/page6">의사결정 대시보드</a>',
+                f'<a class="{c1}" href="/forecast">주가 예측</a>',
                 f'<a class="{c8}" href="/page8">워크포워드 검증</a>',
             ]
         )
-    if os.getenv("ENABLE_MACRO", "").strip().lower() in {"1", "true", "yes", "on"}:
-        links.append('<a class="" href="/macro/overview">거시분석</a>')
     return '<div class="nav">' + "".join(links) + "</div>" + sync_script
 
 

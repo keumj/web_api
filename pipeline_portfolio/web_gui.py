@@ -97,8 +97,6 @@ def _nav(active: str, ctx: _PageContext) -> str:
         css = "active" if page_id == active else ""
         links.append(f'<a class="{css}" href="{final_href}">{html.escape(label)}</a>')
     
-    if os.getenv("ENABLE_MACRO", "").strip().lower() in {"1", "true", "yes", "on"}:
-        links.append('<a class="" href="/macro/overview">거시분석</a>')
     return '<div class="nav">' + "".join(links) + "</div>"
 
 
@@ -144,8 +142,53 @@ def _base_css() -> str:
     .form-grid input, .form-grid select {
       width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--line); border-radius: 6px;
     }
+    .virtual-trade-stack { display: grid; gap: 12px; }
+    .virtual-trade-list { display: grid; gap: 10px; }
+    .virtual-trade-row {
+      display: grid;
+      grid-template-columns: minmax(120px, 1.2fr) minmax(110px, 0.95fr) minmax(110px, 0.95fr) minmax(130px, 1fr) minmax(110px, 0.95fr) auto;
+      gap: 10px 12px;
+      align-items: end;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fbfcfe;
+    }
+    .virtual-trade-row label,
+    .virtual-trade-forecast label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .virtual-trade-row input,
+    .virtual-trade-row select,
+    .virtual-trade-forecast input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+    .virtual-trade-actions {
+      display: flex;
+      gap: 10px;
+      align-items: end;
+      flex-wrap: wrap;
+    }
+    .virtual-trade-forecast { min-width: 160px; }
     .toolbar { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin-top: 10px; }
     button { background: #111; border: 0; color: #fff; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+    button.button-secondary {
+      background: #fff;
+      color: #111;
+      border: 1px solid #111;
+    }
+    button.virtual-trade-remove {
+      padding: 9px 12px;
+      background: #fff;
+      color: #8a2d2d;
+      border: 1px solid #d3b2b2;
+    }
+    button.virtual-trade-remove:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
     .notice { margin-top: 10px; border-radius: 8px; padding: 10px; }
     .notice a { color: var(--accent); text-decoration: underline; }
     .notice.ok { background: var(--ok-bg); border: 1px solid var(--ok-line); }
@@ -276,6 +319,10 @@ def _base_css() -> str:
     .refresh-update-list { height: 360px; }
     @media (max-width: 1100px) {
       .form-grid, .form-grid.form-virtual { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+      .virtual-trade-row { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+      .virtual-trade-actions { align-items: stretch; }
+      .virtual-trade-actions button,
+      .virtual-trade-forecast { width: 100%; }
       .metrics { grid-template-columns: repeat(2, minmax(160px, 1fr)); }
       .grid-2, .grid-3, .split-grid { grid-template-columns: 1fr; }
       .refresh-card-head { grid-template-columns: 1fr; }
@@ -820,20 +867,150 @@ def _virtual_trade_page(ctx: _PageContext) -> str:
     {_date_range_form("virtual-trade", ctx)}
     <div class="card">
       <h2 style="margin-top:0;">가상 거래</h2>
-      <form method="post" action="/run_virtual_trade">
+      <form method="post" action="/run_virtual_trade" id="virtual-trade-form">
         <input type="hidden" name="lookback_days" value="{int(ctx.lookback_days)}">
         <input type="hidden" name="start_date" value="{html.escape(ctx.start_date)}">
         <input type="hidden" name="end_date" value="{html.escape(ctx.end_date)}">
-        <div class="form-grid form-virtual">
-          <div><label>티커</label><input type="text" name="ticker" placeholder="AAPL" required></div>
-          <div><label>매수/매도</label><select name="side"><option value="BUY">BUY</option><option value="SELL">SELL</option></select></div>
-          <div><label>수량</label><input type="number" min="0.0001" step="0.0001" name="quantity" required></div>
-          <div><label>가격(비우면 최신가)</label><input type="number" min="0.0001" step="0.0001" name="price" placeholder="자동"></div>
-          <div><label>수수료</label><input type="number" min="0" step="0.0001" name="fees" value="0"></div>
-          <div><label>예측 기간</label><input type="number" min="1" step="1" name="forecast_horizon_days" value="{DEFAULT_VIRTUAL_FORECAST_HORIZON_DAYS}"></div>
-          <div><button type="submit">가상 거래 계산</button></div>
+        <div class="virtual-trade-stack">
+          <div id="virtual-trade-rows" class="virtual-trade-list">
+            <div class="virtual-trade-row" data-trade-row>
+              <div><label>티커</label><input type="text" name="ticker" data-field="ticker" placeholder="AAPL"></div>
+              <div><label>매수/매도</label><select name="side" data-field="side"><option value="BUY">BUY</option><option value="SELL">SELL</option></select></div>
+              <div><label>수량</label><input type="number" min="0.0001" step="0.0001" name="quantity" data-field="quantity"></div>
+              <div><label>가격(비우면 최신가)</label><input type="number" min="0.0001" step="0.0001" name="price" data-field="price" placeholder="자동"></div>
+              <div><label>수수료</label><input type="number" min="0" step="0.0001" name="fees" data-field="fees" placeholder="0"></div>
+              <div><button type="button" class="virtual-trade-remove" data-remove-row>행 삭제</button></div>
+            </div>
+          </div>
+          <div class="virtual-trade-actions">
+            <button type="button" class="button-secondary" id="virtual-trade-add-row">행 추가</button>
+            <div class="virtual-trade-forecast">
+              <label>예측 기간</label>
+              <input type="number" min="1" step="1" name="forecast_horizon_days" value="{DEFAULT_VIRTUAL_FORECAST_HORIZON_DAYS}">
+            </div>
+            <button type="submit">가상 거래 계산</button>
+          </div>
+          <textarea name="trade_lines" id="virtual-trade-lines" hidden></textarea>
+          <div class="small">여러 거래를 순서대로 추가한 뒤 한 번에 계산합니다. 티커, 매수/매도, 수량은 필수이고 가격과 수수료는 비워둘 수 있습니다.</div>
         </div>
       </form>
+      <template id="virtual-trade-row-template">
+        <div class="virtual-trade-row" data-trade-row>
+          <div><label>티커</label><input type="text" data-field="ticker" placeholder="AAPL"></div>
+          <div><label>매수/매도</label><select data-field="side"><option value="BUY">BUY</option><option value="SELL">SELL</option></select></div>
+          <div><label>수량</label><input type="number" min="0.0001" step="0.0001" data-field="quantity"></div>
+          <div><label>가격(비우면 최신가)</label><input type="number" min="0.0001" step="0.0001" data-field="price" placeholder="자동"></div>
+          <div><label>수수료</label><input type="number" min="0" step="0.0001" data-field="fees" placeholder="0"></div>
+          <div><button type="button" class="virtual-trade-remove" data-remove-row>행 삭제</button></div>
+        </div>
+      </template>
+      <script>
+        (function () {{
+          const form = document.getElementById("virtual-trade-form");
+          if (!form || form.dataset.rowsReady === "1") {{
+            return;
+          }}
+          form.dataset.rowsReady = "1";
+          const rowsHost = document.getElementById("virtual-trade-rows");
+          const template = document.getElementById("virtual-trade-row-template");
+          const tradeLines = document.getElementById("virtual-trade-lines");
+          const addButton = document.getElementById("virtual-trade-add-row");
+
+          function getRows() {{
+            return Array.from(rowsHost.querySelectorAll("[data-trade-row]"));
+          }}
+
+          function updateRemoveButtons() {{
+            const rows = getRows();
+            rows.forEach((row) => {{
+              const button = row.querySelector("[data-remove-row]");
+              if (button) {{
+                button.disabled = rows.length === 1;
+              }}
+            }});
+          }}
+
+          function appendRow() {{
+            if (!template) {{
+              return;
+            }}
+            const fragment = template.content.cloneNode(true);
+            rowsHost.appendChild(fragment);
+            updateRemoveButtons();
+          }}
+
+          function serializeRows() {{
+            const lines = [];
+            const invalidRows = [];
+            getRows().forEach((row, index) => {{
+              const ticker = (row.querySelector('[data-field="ticker"]')?.value || "").trim();
+              const side = (row.querySelector('[data-field="side"]')?.value || "").trim();
+              const quantity = (row.querySelector('[data-field="quantity"]')?.value || "").trim();
+              const price = (row.querySelector('[data-field="price"]')?.value || "").trim();
+              const fees = (row.querySelector('[data-field="fees"]')?.value || "").trim();
+              const hasAnyValue = [ticker, side, quantity, price, fees].some((value) => value !== "");
+              if (!hasAnyValue) {{
+                return;
+              }}
+              if (!ticker || !side || !quantity) {{
+                invalidRows.push(index + 1);
+                return;
+              }}
+              const parts = [ticker, side, quantity];
+              if (price !== "" || fees !== "") {{
+                parts.push(price);
+              }}
+              if (fees !== "") {{
+                parts.push(fees);
+              }}
+              lines.push(parts.join(","));
+            }});
+            tradeLines.value = lines.join("\\n");
+            return {{ lines, invalidRows }};
+          }}
+
+          addButton?.addEventListener("click", function () {{
+            appendRow();
+          }});
+
+          rowsHost.addEventListener("click", function (event) {{
+            const target = event.target;
+            if (!(target instanceof HTMLElement) || !target.matches("[data-remove-row]")) {{
+              return;
+            }}
+            const rows = getRows();
+            if (rows.length === 1) {{
+              return;
+            }}
+            target.closest("[data-trade-row]")?.remove();
+            updateRemoveButtons();
+            serializeRows();
+          }});
+
+          rowsHost.addEventListener("input", function () {{
+            serializeRows();
+          }});
+          rowsHost.addEventListener("change", function () {{
+            serializeRows();
+          }});
+
+          form.addEventListener("submit", function (event) {{
+            const {{ lines, invalidRows }} = serializeRows();
+            if (invalidRows.length) {{
+              event.preventDefault();
+              window.alert("필수값이 빠진 거래 행이 있습니다: " + invalidRows.join(", "));
+              return;
+            }}
+            if (!lines.length) {{
+              event.preventDefault();
+              window.alert("최소 한 건의 거래를 입력해 주세요.");
+            }}
+          }});
+
+          updateRemoveButtons();
+          serializeRows();
+        }})();
+      </script>
     </div>
     <div class="grid-2">
       <div class="card">

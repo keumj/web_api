@@ -17,6 +17,181 @@ def add_start_page_link(page: str) -> str:
     return page.replace('<div class="wrap">', '<div class="wrap">' + link, 1)
 
 
+def inject_busy_cursor_overlay(page: str) -> str:
+    marker = "data-busy-cursor-overlay"
+    if marker in page:
+        return page
+
+    overlay_style = """
+  <style data-busy-cursor-overlay>
+    .busy-cursor-overlay {
+      position: fixed;
+      left: 0;
+      top: 0;
+      z-index: 9999;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      padding: 7px 11px;
+      border-radius: 999px;
+      background: rgba(17, 24, 39, 0.94);
+      color: #fff;
+      box-shadow: 0 14px 28px rgba(15, 23, 42, 0.22);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      pointer-events: none;
+      opacity: 0;
+      transform: translate3d(-9999px, -9999px, 0) scale(0.96);
+      transition: opacity 140ms ease, transform 140ms ease;
+      white-space: nowrap;
+      font-family: "Segoe UI", "Noto Sans KR", sans-serif;
+    }
+    .busy-cursor-overlay.is-visible {
+      opacity: 1;
+    }
+    .busy-cursor-overlay__spinner {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(255, 255, 255, 0.32);
+      border-top-color: #fff;
+      animation: busy-cursor-spin 0.8s linear infinite;
+      flex: 0 0 auto;
+    }
+    .busy-cursor-overlay__text {
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+    }
+    body.busy-cursor-active,
+    body.busy-cursor-active * {
+      cursor: progress !important;
+    }
+    @keyframes busy-cursor-spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+"""
+    overlay_markup = """
+  <div class="busy-cursor-overlay" id="busy-cursor-overlay" aria-live="polite" aria-hidden="true">
+    <span class="busy-cursor-overlay__spinner" aria-hidden="true"></span>
+    <span class="busy-cursor-overlay__text" id="busy-cursor-overlay-text">실행중...</span>
+  </div>
+  <script data-busy-cursor-overlay>
+    (() => {
+      const overlay = document.getElementById("busy-cursor-overlay");
+      const textEl = document.getElementById("busy-cursor-overlay-text");
+      if (!overlay || !textEl) return;
+
+      const state = {
+        active: false,
+        x: Math.max(window.innerWidth * 0.5, 24),
+        y: Math.max(window.innerHeight * 0.35, 24),
+      };
+
+      const trackedButtons = new WeakMap();
+
+      const positionOverlay = () => {
+        const rect = overlay.getBoundingClientRect();
+        const offsetX = 18;
+        const offsetY = 22;
+        const maxX = Math.max(window.innerWidth - rect.width - 12, 12);
+        const maxY = Math.max(window.innerHeight - rect.height - 12, 12);
+        const nextX = Math.min(Math.max(state.x + offsetX, 12), maxX);
+        const nextY = Math.min(Math.max(state.y + offsetY, 12), maxY);
+        overlay.style.transform = `translate3d(${nextX}px, ${nextY}px, 0) scale(${state.active ? 1 : 0.96})`;
+      };
+
+      const setPointer = (x, y) => {
+        state.x = x;
+        state.y = y;
+        if (state.active) {
+          positionOverlay();
+        }
+      };
+
+      const isAnalysisIntent = (form) => {
+        if (!(form instanceof HTMLFormElement)) return false;
+        if (form.dataset.noBusyCursor === "true") return false;
+
+        const method = (form.getAttribute("method") || "get").toLowerCase();
+        const action = (form.getAttribute("action") || window.location.pathname).toLowerCase();
+        const intentField = form.querySelector('input[name="intent"]');
+        const intent = (intentField ? intentField.value : "").trim().toLowerCase();
+
+        if (method === "get" && ["run", "analyze", "refresh"].includes(intent)) {
+          return true;
+        }
+
+        if (method !== "post") return false;
+
+        if (action.includes("/stock/run")) return true;
+        if (action.includes("/stock-news/run-")) return true;
+        if (action.includes("/run_virtual_trade")) return true;
+        if (action.includes("/run_refresh")) return true;
+        return false;
+      };
+
+      const resolveLabel = (form, submitter) => {
+        return "실행중...";
+      };
+
+      const activate = (label) => {
+        state.active = true;
+        textEl.textContent = label;
+        overlay.classList.add("is-visible");
+        overlay.setAttribute("aria-hidden", "false");
+        document.body.classList.add("busy-cursor-active");
+        positionOverlay();
+      };
+
+      const deactivate = () => {
+        state.active = false;
+        overlay.classList.remove("is-visible");
+        overlay.setAttribute("aria-hidden", "true");
+        document.body.classList.remove("busy-cursor-active");
+        positionOverlay();
+      };
+
+      document.addEventListener("mousemove", (event) => {
+        setPointer(event.clientX, event.clientY);
+      }, { passive: true });
+
+      document.addEventListener("pointerdown", (event) => {
+        setPointer(event.clientX, event.clientY);
+      }, { passive: true });
+
+      document.addEventListener("click", (event) => {
+        const target = event.target instanceof Element ? event.target.closest("button, input[type=submit]") : null;
+        if (target) {
+          trackedButtons.set(target.form || document.body, target);
+        }
+      }, true);
+
+      document.addEventListener("submit", (event) => {
+        const form = event.target;
+        if (!isAnalysisIntent(form)) return;
+        const submitter = event.submitter || trackedButtons.get(form) || null;
+        activate(resolveLabel(form, submitter));
+      }, true);
+
+      window.addEventListener("pageshow", deactivate);
+      window.addEventListener("pagehide", deactivate);
+      window.addEventListener("focus", () => {
+        if (!document.hidden) deactivate();
+      });
+
+      positionOverlay();
+    })();
+  </script>
+"""
+
+    page = page.replace("</head>", overlay_style + "\n</head>", 1) if "</head>" in page else overlay_style + page
+    if "</body>" in page:
+        return page.replace("</body>", overlay_markup + "\n</body>", 1)
+    return page + overlay_markup
+
+
 def shell(
     title: str,
     body: str,
@@ -45,13 +220,13 @@ def shell(
     )
     default_nav = f"""
         <a class="{active_class["portfolio"]}" href="/portfolio/overview">포트폴리오</a>
-        <a class="{active_class["stock"]}" href="/stock/forecast">종목 분석</a>
+        <a class="{active_class["stock"]}" href="/stock/financials">종목 분석</a>
         <a class="{active_class["news"]}" href="/stock-news/overview">뉴스 분석</a>
         {macro_link}
         {admin_link}
         {api_link}
     """
-    return f"""<!doctype html>
+    return inject_busy_cursor_overlay(f"""<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
@@ -118,4 +293,4 @@ def shell(
   </main>
 </body>
 </html>
-"""
+""")

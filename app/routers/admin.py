@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
 from app.form import read_form
-from app.services import auth_service
+from app.services import auth_service, db_service
 from app.web import shell
 
 
@@ -33,6 +33,45 @@ def _redirect(*, message: str = "", error: str = "") -> RedirectResponse:
         params.append(f"error={quote(error, safe='')}")
     query = "?" + "&".join(params) if params else ""
     return RedirectResponse(f"/admin/users{query}", status_code=303)
+
+
+def _delete_user_account(user_id: str) -> str:
+    clean_user_id = str(user_id or "")
+    auth_service.ensure_auth_db()
+    with db_service.app_db_connection() as conn:
+        row = conn.execute(
+            "SELECT id, username, is_admin FROM users WHERE id = ?",
+            (clean_user_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError("사용자를 찾을 수 없습니다.")
+        if int(row[2] or 0) and auth_service._admin_count(conn) <= 1:
+            raise ValueError("마지막 활성 관리자 계정은 삭제할 수 없습니다.")
+
+        if db_service.using_remote_app_db():
+            try:
+                conn.execute("DELETE FROM portfolio_trades WHERE user_id = ?", (clean_user_id,))
+            except Exception as exc:
+                if "portfolio_trades" not in str(exc):
+                    raise
+        try:
+            conn.execute("DELETE FROM portfolio_latest_snapshots WHERE user_id = ?", (clean_user_id,))
+        except Exception as exc:
+            if "portfolio_latest_snapshots" not in str(exc):
+                raise
+
+        cur = conn.execute("DELETE FROM users WHERE id = ?", (clean_user_id,))
+        conn.commit()
+        if int(cur.rowcount or 0) <= 0:
+            raise ValueError("사용자를 찾을 수 없습니다.")
+        deleted_username = str(row[1])
+
+    if not db_service.using_remote_app_db():
+        portfolio_db = auth_service.portfolio_db_for_user(clean_user_id)
+        if portfolio_db.exists():
+            portfolio_db.unlink()
+
+    return deleted_username
 
 
 def _user_rows(users: list[dict[str, object]]) -> str:
@@ -73,6 +112,9 @@ def _user_rows(users: list[dict[str, object]]) -> str:
                   <form method="post" action="/admin/users/{html.escape(user_id)}/password">
                     <input name="password" type="password" placeholder="새 비밀번호" minlength="8" required />
                     <button class="service-button" type="submit">초기화</button>
+                  </form>
+                  <form method="post" action="/admin/users/{html.escape(user_id)}/delete" onsubmit="return confirm('이 계정과 계정별 포트폴리오 데이터를 삭제할까요?');">
+                    <button class="service-button" type="submit" style="background:var(--danger);">삭제</button>
                   </form>
                 </div>
               </td>
@@ -120,7 +162,7 @@ def users_page(request: Request, message: str = "", error: str = ""):
                 <th>상태</th>
                 <th>생성일</th>
                 <th>최근 로그인</th>
-                <th>거래 DB</th>
+                <th>포트폴리오 DB</th>
                 <th>작업</th>
               </tr>
             </thead>
@@ -185,3 +227,17 @@ async def reset_password(user_id: str, request: Request):
     except ValueError as exc:
         return _redirect(error=str(exc))
     return _redirect(message="비밀번호를 초기화했습니다.")
+
+
+@router.post("/users/{user_id}/delete")
+async def delete_user(user_id: str, request: Request):
+    admin_user = _require_admin(request)
+    if admin_user is None:
+        return _forbidden()
+    if str(admin_user.id) == str(user_id):
+        return _redirect(error="현재 로그인한 관리자 계정은 바로 삭제할 수 없습니다. 다른 관리자 계정으로 로그인한 뒤 삭제해 주세요.")
+    try:
+        username = _delete_user_account(user_id)
+    except ValueError as exc:
+        return _redirect(error=str(exc))
+    return _redirect(message=f"{username} 계정을 삭제했습니다.")

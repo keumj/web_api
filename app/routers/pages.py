@@ -46,11 +46,11 @@ def index(request: Request, next: str | None = None, auth_error: str | None = No
         <p class="service-muted">포트폴리오를 중심으로 종목 분석, 뉴스 분석, 데이터 갱신 기능을 한 포트에서 실행합니다.</p>
       </div>
       <div class="service-grid">
-        <a class="service-card" href="/portfolio/overview?intent=run">
+        <a class="service-card" href="/portfolio/overview">
           <h3>포트폴리오</h3>
           <p>보유 종목, 성과, 위험, 최적화 분석을 실행합니다.</p>
         </a>
-        <a class="service-card" href="/stock/forecast">
+        <a class="service-card" href="/stock/financials">
           <h3>종목 분석</h3>
           <p>개별 종목 예측, 재무, 기술적 분석, 의사결정 화면으로 이동합니다.</p>
         </a>
@@ -95,7 +95,7 @@ def portfolio_home(request: Request) -> RedirectResponse:
 
 @router.get("/stock")
 def stock_home(request: Request) -> RedirectResponse:
-    return _redirect_with_query(request, "/stock/forecast")
+    return _redirect_with_query(request, "/stock/financials")
 
 
 @router.get("/stock-news")

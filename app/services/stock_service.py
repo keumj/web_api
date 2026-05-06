@@ -7,7 +7,7 @@ from datetime import datetime
 
 from pipeline_stock import web_gui as stock_web
 
-from app.web import add_start_page_link, rewrite_links
+from app.web import add_start_page_link, inject_busy_cursor_overlay, rewrite_links
 
 
 STOCK_REWRITES = {
@@ -112,7 +112,7 @@ state = StockState()
 
 
 def _clean_stock_html(html: str) -> str:
-    return add_start_page_link(rewrite_links(html, STOCK_REWRITES))
+    return inject_busy_cursor_overlay(add_start_page_link(rewrite_links(html, STOCK_REWRITES)))
 
 
 def render(page: str, ticker: str | None = None, intent: str | None = None) -> str:

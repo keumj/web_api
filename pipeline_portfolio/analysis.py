@@ -2418,13 +2418,9 @@ def build_portfolio_dashboard(
     )
 
 
-def analyze_virtual_trade(
+def analyze_virtual_trades(
     *,
-    ticker: str,
-    side: str,
-    quantity: float,
-    price: float | None = None,
-    fees: float = 0.0,
+    trade_requests: list[dict[str, object]],
     portfolio_db: Path | str | None = None,
     portfolio_user_id: str | None = None,
     shared_db: Path | str | None = None,
@@ -2433,15 +2429,33 @@ def analyze_virtual_trade(
     end_date: str | None = None,
     forecast_horizon_days: int = DEFAULT_VIRTUAL_FORECAST_HORIZON_DAYS,
 ) -> VirtualTradeResult:
-    ticker_clean = str(ticker or "").strip().upper()
-    side_clean = str(side or "").strip().upper()
-    if not ticker_clean:
-        raise ValueError("ticker must not be empty")
-    if side_clean not in {"BUY", "SELL"}:
-        raise ValueError("side must be BUY or SELL")
-    qty_value = float(quantity)
-    if qty_value <= 0:
-        raise ValueError("quantity must be positive")
+    if not trade_requests:
+        raise ValueError("at least one trade request is required")
+    normalized_requests: list[dict[str, object]] = []
+    ticker_sequence: list[str] = []
+    for raw in trade_requests:
+        ticker_clean = str(raw.get("ticker", "") or "").strip().upper()
+        side_clean = str(raw.get("side", "") or "").strip().upper()
+        if not ticker_clean:
+            raise ValueError("ticker must not be empty")
+        if side_clean not in {"BUY", "SELL"}:
+            raise ValueError("side must be BUY or SELL")
+        qty_value = float(raw.get("quantity", 0) or 0)
+        if qty_value <= 0:
+            raise ValueError("quantity must be positive")
+        price_raw = raw.get("price")
+        fees_raw = raw.get("fees", 0.0)
+        normalized_requests.append(
+            {
+                "ticker": ticker_clean,
+                "side": side_clean,
+                "quantity": qty_value,
+                "price": None if price_raw in {None, ""} else float(price_raw),
+                "fees": float(fees_raw or 0.0),
+            }
+        )
+        ticker_sequence.append(ticker_clean)
+
     before = build_portfolio_dashboard(
         portfolio_db=portfolio_db,
         portfolio_user_id=portfolio_user_id,
@@ -2450,15 +2464,12 @@ def analyze_virtual_trade(
         start_date=start_date,
         end_date=end_date,
     )
-    held_quantity_before = _position_quantity(before.positions, ticker_clean)
     before_cash_balance = _cash_balance_from_positions(before.positions)
-    if side_clean == "SELL":
-        if held_quantity_before <= 0:
-            raise ValueError(f"{ticker_clean} is not currently held, so SELL cannot be simulated")
-        if qty_value - held_quantity_before > 1e-9:
-            raise ValueError(
-                f"SELL quantity exceeds current holding ({held_quantity_before:,.4f} shares)"
-            )
+    current_quantity_map: dict[str, float] = {}
+    if not before.positions.empty and {"ticker", "net_quantity"}.issubset(before.positions.columns):
+        for row in before.positions[["ticker", "net_quantity"]].itertuples(index=False):
+            current_quantity_map[str(row.ticker).strip().upper()] = float(row.net_quantity)
+
     db_now = _get_db_max_date(shared_db)
     trades = before.trades.copy()
     if end_date:
@@ -2477,7 +2488,7 @@ def analyze_virtual_trade(
     rolling_anchor_ts = end_ts - pd.Timedelta(days=100)
     selected_anchor_ts = start_ts - pd.Timedelta(days=14)
     calendar_price_start_ts = min(start_ts, selected_anchor_ts, calendar_anchor_ts - pd.Timedelta(days=14), rolling_anchor_ts)
-    analysis_symbols = sorted(set(before.positions["ticker"].astype(str).tolist() + [ticker_clean]))
+    analysis_symbols = sorted(set(before.positions["ticker"].astype(str).tolist() + ticker_sequence))
     close_history, _, sources = _load_close_history(
         analysis_symbols,
         start_date=start_ts.strftime("%Y-%m-%d"),
@@ -2493,31 +2504,65 @@ def analyze_virtual_trade(
         )
     else:
         calendar_close_history = close_history
-    inferred_price = float(close_history[ticker_clean].dropna().iloc[-1]) if ticker_clean in close_history.columns and not close_history[ticker_clean].dropna().empty else np.nan
-    trade_price = float(price) if price is not None else inferred_price
-    if not np.isfinite(trade_price) or trade_price <= 0:
-        raise ValueError("price could not be resolved from the shared DB")
-    forecast_return = _forecast_return_proxy(close_history, ticker_clean, forecast_horizon_days)
-    forecast_price = trade_price * (1.0 + forecast_return)
-    synthetic = pd.DataFrame(
-        [
+
+    synthetic_rows: list[dict[str, object]] = []
+    input_rows: list[dict[str, object]] = []
+    next_trade_id = int((trades["id"].max() + 1) if not trades.empty else 1)
+    for idx, req in enumerate(normalized_requests, start=1):
+        ticker_clean = str(req["ticker"])
+        side_clean = str(req["side"])
+        qty_value = float(req["quantity"])
+        held_quantity_before = float(current_quantity_map.get(ticker_clean, 0.0))
+        if side_clean == "SELL":
+            if held_quantity_before <= 0:
+                raise ValueError(f"{ticker_clean} is not currently held, so SELL cannot be simulated")
+            if qty_value - held_quantity_before > 1e-9:
+                raise ValueError(
+                    f"SELL quantity exceeds current holding for {ticker_clean} ({held_quantity_before:,.4f} shares)"
+                )
+        inferred_price = float(close_history[ticker_clean].dropna().iloc[-1]) if ticker_clean in close_history.columns and not close_history[ticker_clean].dropna().empty else np.nan
+        trade_price = float(req["price"]) if req["price"] is not None else inferred_price
+        if not np.isfinite(trade_price) or trade_price <= 0:
+            raise ValueError(f"price could not be resolved from the shared DB for {ticker_clean}")
+        fee_value = float(req["fees"])
+        forecast_return = _forecast_return_proxy(close_history, ticker_clean, forecast_horizon_days)
+        forecast_price = trade_price * (1.0 + forecast_return)
+        gross_trade_amount = qty_value * trade_price
+        synthetic_rows.append(
             {
-                "id": int((trades["id"].max() + 1) if not trades.empty else 1),
+                "id": next_trade_id,
                 "trade_date": end_ts,
                 "ticker": ticker_clean,
                 "side": side_clean,
                 "quantity": qty_value,
                 "price": trade_price,
-                "fees": float(fees),
-                "notes": f"virtual_trade_{forecast_horizon_days}d",
+                "fees": fee_value,
+                "notes": f"virtual_trade_{forecast_horizon_days}d_{idx}",
                 "created_at": end_ts.strftime("%Y-%m-%d %H:%M:%S"),
-                "gross_amount": qty_value * trade_price,
-                "net_cash_flow": -(qty_value * trade_price + float(fees))
+                "gross_amount": gross_trade_amount,
+                "net_cash_flow": -(gross_trade_amount + fee_value)
                 if side_clean == "BUY"
-                else (qty_value * trade_price - float(fees)),
+                else (gross_trade_amount - fee_value),
             }
-        ]
-    )
+        )
+        input_rows.append(
+            {
+                "ticker": ticker_clean,
+                "side": side_clean,
+                "held_quantity_before": held_quantity_before,
+                "quantity": qty_value,
+                "trade_price": trade_price,
+                "gross_trade_amount": gross_trade_amount,
+                "fees": fee_value,
+                "forecast_horizon_days": int(forecast_horizon_days),
+                "forecast_return_pct": forecast_return * 100.0,
+                "forecast_price": forecast_price,
+            }
+        )
+        current_quantity_map[ticker_clean] = held_quantity_before + qty_value if side_clean == "BUY" else held_quantity_before - qty_value
+        next_trade_id += 1
+
+    synthetic = pd.DataFrame(synthetic_rows)
     combined = pd.concat([trades, synthetic], ignore_index=True) if not trades.empty else synthetic
     sector_map, component_source = _sector_map(max_symbols=500)
     positions_after_raw = _current_positions_from_trades(combined, sector_map=sector_map)
@@ -2576,10 +2621,10 @@ def analyze_virtual_trade(
         sector_frame=sector_frame,
     )
     after_summary = _build_portfolio_summary(
-        positions_after, 
-        holdings_after, 
-        portfolio_after, 
-        benchmark_daily, 
+        positions_after,
+        holdings_after,
+        portfolio_after,
+        benchmark_daily,
         as_of_date=as_of_date,
         start_ts=start_ts,
         end_ts=end_ts,
@@ -2621,30 +2666,16 @@ def analyze_virtual_trade(
             risk_changes.loc[0, f"before_{col}"] = before_risk.iloc[0][col]
             risk_changes.loc[0, f"after_{col}"] = after_risk.iloc[0][col]
             risk_changes.loc[0, f"delta_{col}"] = after_risk.iloc[0][col] - before_risk.iloc[0][col]
-    input_summary = pd.DataFrame(
-        [
-            {
-                "ticker": ticker_clean,
-                "side": side_clean,
-                "held_quantity_before": held_quantity_before,
-                "quantity": qty_value,
-                "trade_price": trade_price,
-                "gross_trade_amount": qty_value * trade_price,
-                "fees": float(fees),
-                "before_cash_balance": before_cash_balance,
-                "auto_cash_action": auto_cash_action,
-                "auto_cash_amount": auto_cash_amount,
-                "final_cash_balance": final_cash_balance,
-                "forecast_horizon_days": int(forecast_horizon_days),
-                "forecast_return_pct": forecast_return * 100.0,
-                "forecast_price": forecast_price,
-            }
-        ]
-    )
+    input_summary = pd.DataFrame(input_rows)
+    input_summary["before_cash_balance"] = before_cash_balance
+    input_summary["auto_cash_action"] = auto_cash_action
+    input_summary["auto_cash_amount"] = auto_cash_amount
+    input_summary["final_cash_balance"] = final_cash_balance
     diagnostics = {
         "component_source": component_source,
         "price_source": sources.get("price_source", "sqlite"),
         "cash_warning": cash_warning,
+        "trade_count": str(len(normalized_requests)),
     }
     return VirtualTradeResult(
         input_summary=input_summary,
@@ -2653,6 +2684,41 @@ def analyze_virtual_trade(
         position_changes=changes,
         risk_changes=risk_changes,
         diagnostics=diagnostics,
+    )
+
+
+def analyze_virtual_trade(
+    *,
+    ticker: str,
+    side: str,
+    quantity: float,
+    price: float | None = None,
+    fees: float = 0.0,
+    portfolio_db: Path | str | None = None,
+    portfolio_user_id: str | None = None,
+    shared_db: Path | str | None = None,
+    lookback_days: int = DEFAULT_LOOKBACK_DAYS,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    forecast_horizon_days: int = DEFAULT_VIRTUAL_FORECAST_HORIZON_DAYS,
+) -> VirtualTradeResult:
+    return analyze_virtual_trades(
+        trade_requests=[
+            {
+                "ticker": ticker,
+                "side": side,
+                "quantity": quantity,
+                "price": price,
+                "fees": fees,
+            }
+        ],
+        portfolio_db=portfolio_db,
+        portfolio_user_id=portfolio_user_id,
+        shared_db=shared_db,
+        lookback_days=lookback_days,
+        start_date=start_date,
+        end_date=end_date,
+        forecast_horizon_days=forecast_horizon_days,
     )
 
 

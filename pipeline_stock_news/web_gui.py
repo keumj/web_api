@@ -94,8 +94,6 @@ def _nav(active: str, is_sub_page: bool = False) -> str:
         css = " ".join(css_parts)
         links.append(f'<a class="{css}" href="{href}">{html.escape(label)}</a>')
     
-    if os.getenv("ENABLE_MACRO", "").strip().lower() in {"1", "true", "yes", "on"}:
-        links.append('<a class="" href="/macro/overview">거시분석</a>')
     return (
         '<div class="nav">' + "".join(links) + "</div>"
         + """
