@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import html
+import subprocess
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -10,6 +13,78 @@ from app.web import shell
 
 router = APIRouter()
 
+SQLITE_REFRESH_TARGETS = (
+    "data/sp500_shared_db/sp500_shared_prices.sqlite",
+    "data/macro_prices.sqlite",
+)
+
+
+def _latest_scheduler_lines() -> list[str]:
+    log_path = settings.project_root / "outputs" / "refresh_local_data_scheduler.log"
+    if not log_path.exists():
+        return []
+    try:
+        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return []
+    matches = [line.strip() for line in lines if "Scheduled refresh" in line or "SQLite auto sync is disabled" in line]
+    return matches[-3:]
+
+
+def _sqlite_git_status() -> tuple[bool, list[str], str]:
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain", "--", *SQLITE_REFRESH_TARGETS],
+            cwd=str(settings.project_root),
+            check=False,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=5,
+        )
+    except Exception as exc:
+        return False, [], f"SQLite Git 상태를 확인하지 못했습니다: {type(exc).__name__}"
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        return False, [], f"SQLite Git 상태를 확인하지 못했습니다: {detail or 'git status 실패'}"
+    lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return bool(lines), lines, ""
+
+
+def _refresh_notice_card(*, admin: bool) -> str:
+    if not admin:
+        return ""
+    has_changes, status_lines, error = _sqlite_git_status()
+    scheduler_lines = _latest_scheduler_lines()
+    tone = "#fff7ed" if has_changes or error else "#ecfdf5"
+    border = "#fed7aa" if has_changes or error else "#bbf7d0"
+    headline = "GitHub에 아직 반영되지 않은 SQLite 변경이 있습니다." if has_changes else "현재 추적 중인 SQLite 변경은 없습니다."
+    if error:
+        headline = "SQLite Git 상태 확인이 필요합니다."
+    status_html = "".join(f"<li>{html.escape(line)}</li>" for line in status_lines) or "<li>변경 없음</li>"
+    scheduler_html = "".join(f"<li>{html.escape(line)}</li>" for line in scheduler_lines) or "<li>아직 스케줄 실행 로그가 없습니다.</li>"
+    error_html = f" {html.escape(error)}" if error else ""
+    return f"""
+      <div class="service-card" style="background:{tone}; border-color:{border};">
+        <h3 style="margin:0 0 6px;">데이터 갱신 알림</h3>
+        <p class="service-muted" style="margin:0 0 10px;">
+          일일 데이터 갱신 후 GitHub 강제 push는 꺼져 있습니다. 아래 상태를 확인한 뒤 필요한 경우에만 수동으로 커밋/푸시하세요.
+        </p>
+        <div style="display:grid; gap:8px; font-size:13px;">
+          <div><strong>{html.escape(headline)}</strong>{error_html}</div>
+          <div>
+            <div class="service-muted">SQLite Git 상태</div>
+            <ul style="margin:4px 0 0 18px; padding:0;">{status_html}</ul>
+          </div>
+          <div>
+            <div class="service-muted">최근 스케줄러 로그</div>
+            <ul style="margin:4px 0 0 18px; padding:0;">{scheduler_html}</ul>
+          </div>
+        </div>
+      </div>
+    """
+
 
 @router.get("/", response_class=HTMLResponse)
 def index(request: Request, next: str | None = None, auth_error: str | None = None) -> HTMLResponse:
@@ -19,6 +94,7 @@ def index(request: Request, next: str | None = None, auth_error: str | None = No
     else:
         error = str(auth_error or "")
     user = auth_service.current_user(request)
+    refresh_notice = _refresh_notice_card(admin=bool(user and user.is_admin))
     admin_card = (
         """
         <a class="service-card" href="/admin/users">
@@ -45,6 +121,7 @@ def index(request: Request, next: str | None = None, auth_error: str | None = No
         <h1>Keumj 포트폴리오 분석 서비스</h1>
         <p class="service-muted">포트폴리오를 중심으로 종목 분석, 뉴스 분석, 데이터 갱신 기능을 한 포트에서 실행합니다.</p>
       </div>
+      {refresh_notice}
       <div class="service-grid">
         <a class="service-card" href="/portfolio/overview">
           <h3>포트폴리오</h3>

@@ -8,7 +8,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TARGET = Path("data/sp500_shared_db/sp500_shared_prices.sqlite")
+DEFAULT_TARGETS = [
+    Path("data/sp500_shared_db/sp500_shared_prices.sqlite"),
+    Path("data/macro_prices.sqlite"),
+]
 
 
 def _run(args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -32,35 +35,33 @@ def _status_lines(*pathspec: str) -> list[str]:
     return [line.rstrip() for line in result.stdout.splitlines() if line.strip()]
 
 
-def _changed_paths(lines: list[str]) -> list[str]:
-    paths: list[str] = []
-    for line in lines:
-        if len(line) < 4:
-            continue
-        path = line[3:].strip()
-        if " -> " in path:
-            path = path.split(" -> ", 1)[1].strip()
-        paths.append(path.replace("\\", "/"))
-    return paths
-
-
 def _print(msg: str) -> None:
     print(f"[auto-sync] {msg}", flush=True)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Commit and push only the shared SQLite refresh artifact.")
+    parser = argparse.ArgumentParser(description="Commit and push only refreshed SQLite artifacts.")
     parser.add_argument("--remote", default="origin")
     parser.add_argument("--branch", default="")
     parser.add_argument("--message", default="")
+    parser.add_argument(
+        "--target",
+        action="append",
+        default=[],
+        help="SQLite file to sync. May be repeated. Defaults to shared and macro SQLite files.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-push", action="store_true")
     args = parser.parse_args()
 
-    target_abs = ROOT / TARGET
-    if not target_abs.exists():
-        _print(f"target file is missing: {TARGET.as_posix()}")
+    targets = [Path(item) for item in args.target] if args.target else DEFAULT_TARGETS
+    existing_targets = [target for target in targets if (ROOT / target).exists()]
+    if not existing_targets:
+        _print("no target SQLite files exist:")
+        for target in targets:
+            _print(f"  - {target.as_posix()}")
         return 1
+    target_pathspecs = [target.as_posix() for target in existing_targets]
 
     try:
         inside = _git_output("rev-parse", "--is-inside-work-tree")
@@ -76,23 +77,17 @@ def main() -> int:
         _print("could not determine current branch")
         return 1
 
-    staged_status = _status_lines()
-    staged_paths = _changed_paths([line for line in staged_status if line[:2] != "??"])
-    unrelated_staged = [path for path in staged_paths if path != TARGET.as_posix()]
-    if unrelated_staged:
-        _print("refusing to auto-sync because other tracked changes are present in the worktree:")
-        for path in unrelated_staged:
-            _print(f"  - {path}")
-        _print("commit or stash those changes first, or run the sync manually.")
-        return 2
-
-    target_status = _status_lines(TARGET.as_posix())
-    if not target_status:
-        _print(f"no changes detected for {TARGET.as_posix()}")
+    target_status = _status_lines(*target_pathspecs)
+    ignored_status = _run(["git", "status", "--porcelain", "--ignored", "--", *target_pathspecs], check=False)
+    ignored_lines = [line.rstrip() for line in ignored_status.stdout.splitlines() if line.startswith("!! ")]
+    if not target_status and not ignored_lines:
+        _print("no changes detected for target SQLite files")
         return 0
 
-    message = args.message or f"Auto-refresh shared market data ({datetime.now().strftime('%Y-%m-%d')})"
-    _print(f"target change detected: {TARGET.as_posix()}")
+    message = args.message or f"Auto-refresh SQLite data ({datetime.now().strftime('%Y-%m-%d')})"
+    _print("target SQLite changes detected:")
+    for target in target_pathspecs:
+        _print(f"  - {target}")
     _print(f"branch={branch} remote={args.remote}")
     _print(f"commit message: {message}")
 
@@ -101,8 +96,8 @@ def main() -> int:
         return 0
 
     try:
-        _run(["git", "add", "--", TARGET.as_posix()])
-        _run(["git", "commit", "--only", "-m", message, "--", TARGET.as_posix()])
+        _run(["git", "add", "--force", "--", *target_pathspecs])
+        _run(["git", "commit", "--only", "-m", message, "--", *target_pathspecs])
         _print("commit created successfully")
         if not args.no_push:
             _run(["git", "push", args.remote, branch])

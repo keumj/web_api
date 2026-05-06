@@ -14,6 +14,8 @@ from pipeline_common.notebook_data import (
     make_gbm_series,
 )
 
+from .macro_data_store import read_macro_frame, read_macro_series
+
 try:
     from fredapi import Fred
 except Exception:  # pragma: no cover - optional dependency
@@ -264,6 +266,10 @@ def _load_local_or_fallback(
     vol: float,
     seed: int,
 ) -> tuple[pd.Series, str]:
+    sqlite_series, sqlite_source = read_macro_series(name, start_date=start)
+    if sqlite_series is not None and not sqlite_series.empty:
+        sqlite_series.name = name
+        return sqlite_series, sqlite_source or "macro_sqlite"
     candidates = [os.getenv(env_name, "").strip(), *filenames]
     for raw_path in candidates:
         if not raw_path:
@@ -301,6 +307,7 @@ def _load_fred_or_local_series(
     name: str,
     *,
     fred_id: str,
+    sqlite_id: str | None = None,
     env_name: str,
     filenames: list[str],
     start: str,
@@ -310,6 +317,10 @@ def _load_fred_or_local_series(
     fallback_vol: float,
     seed: int,
 ) -> tuple[pd.Series, str]:
+    sqlite_series, sqlite_source = read_macro_series(sqlite_id or fred_id, start_date=start)
+    if sqlite_series is not None and not sqlite_series.empty:
+        sqlite_series.name = name
+        return sqlite_series, sqlite_source or "macro_sqlite"
     candidates = [os.getenv(env_name, "").strip(), *filenames]
     for raw_path in candidates:
         if not raw_path:
@@ -864,7 +875,11 @@ def build_macro_dashboard(
     tail_n = max(lookback + 60, 260)
 
     yield_ids = ["DGS1MO", "DGS3MO", "DGS6MO", "DGS1", "DGS2", "DGS3", "DGS5", "DGS7", "DGS10", "DGS20", "DGS30"]
-    yields, yield_source = load_yield_curve_df(yield_ids, start=start)
+    sqlite_yields, sqlite_yield_source = read_macro_frame(yield_ids, start_date=start)
+    if sqlite_yields is not None and not sqlite_yields.empty:
+        yields, yield_source = sqlite_yields.ffill().bfill(), sqlite_yield_source or "macro_sqlite"
+    else:
+        yields, yield_source = load_yield_curve_df(yield_ids, start=start)
     yields = yields.tail(tail_n).copy()
 
     components, components_source = load_sp500_components(max_symbols=120)
@@ -886,6 +901,7 @@ def build_macro_dashboard(
     vix, vix_source = _load_fred_or_local_series(
         "VIX",
         fred_id="VIXCLS",
+        sqlite_id="VIX",
         env_name="VIX_CSV_PATH",
         filenames=["data/vix.csv", "data/VIX.csv"],
         start=start,
@@ -898,6 +914,7 @@ def build_macro_dashboard(
     ig_oas, ig_oas_source = _load_fred_or_local_series(
         "Investment Grade OAS",
         fred_id="BAMLC0A0CM",
+        sqlite_id="IG_OAS",
         env_name="IG_OAS_CSV_PATH",
         filenames=["data/ig_oas.csv", "data/investment_grade_oas.csv"],
         start=start,
@@ -910,6 +927,7 @@ def build_macro_dashboard(
     hy_oas, hy_oas_source = _load_fred_or_local_series(
         "High Yield OAS",
         fred_id="BAMLH0A0HYM2",
+        sqlite_id="HY_OAS",
         env_name="HY_OAS_CSV_PATH",
         filenames=["data/hy_oas.csv", "data/high_yield_oas.csv"],
         start=start,
