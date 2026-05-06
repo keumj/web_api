@@ -108,6 +108,49 @@ def _line_chart(frame: pd.DataFrame, title: str, *, ylabel: str = "", normalize:
     return _chart_to_base64(fig)
 
 
+def _dual_axis_line_chart(
+    left_frame: pd.DataFrame,
+    right_frame: pd.DataFrame,
+    title: str,
+    *,
+    left_ylabel: str = "",
+    right_ylabel: str = "",
+    normalize_left: bool = False,
+    normalize_right: bool = False,
+    tail: int = 252,
+) -> str:
+    left = _normalize(left_frame) if normalize_left else left_frame.copy()
+    right = _normalize(right_frame) if normalize_right else right_frame.copy()
+    left = left.tail(tail).apply(pd.to_numeric, errors="coerce").dropna(how="all")
+    right = right.tail(tail).apply(pd.to_numeric, errors="coerce").dropna(how="all")
+    fig, ax_left = plt.subplots(figsize=(7.2, 3.3))
+    ax_right = ax_left.twinx()
+    if left.empty and right.empty:
+        ax_left.text(0.5, 0.5, "No data", ha="center", va="center")
+    else:
+        left_lines = []
+        right_lines = []
+        for col in left.columns:
+            series = left[col].dropna()
+            if not series.empty:
+                left_lines.extend(ax_left.plot(series.index, series.values, linewidth=1.9, label=str(col)))
+        for col in right.columns:
+            series = right[col].dropna()
+            if not series.empty:
+                right_lines.extend(ax_right.plot(series.index, series.values, linewidth=1.7, linestyle="--", label=str(col)))
+        lines = left_lines + right_lines
+        if lines:
+            ax_left.legend(lines, [line.get_label() for line in lines], loc="best", fontsize=8, frameon=False)
+    ax_left.set_title(title, fontsize=11, loc="left")
+    ax_left.set_ylabel(left_ylabel)
+    ax_right.set_ylabel(right_ylabel)
+    ax_left.grid(True, alpha=0.25)
+    ax_left.tick_params(axis="x", labelrotation=20, labelsize=8)
+    ax_left.tick_params(axis="y", labelsize=8)
+    ax_right.tick_params(axis="y", labelsize=8)
+    return _chart_to_base64(fig)
+
+
 def _bar_chart(labels: list[str], values: list[float], title: str, *, ylabel: str = "") -> str:
     fig, ax = plt.subplots(figsize=(7.2, 3.3))
     vals = [0.0 if not np.isfinite(v) else float(v) for v in values]
@@ -119,6 +162,52 @@ def _bar_chart(labels: list[str], values: list[float], title: str, *, ylabel: st
     ax.grid(True, axis="y", alpha=0.25)
     ax.tick_params(axis="x", labelrotation=15, labelsize=8)
     ax.tick_params(axis="y", labelsize=8)
+    return _chart_to_base64(fig)
+
+
+def _horizontal_bar_chart(labels: list[str], values: list[float], title: str, *, xlabel: str = "") -> str:
+    fig, ax = plt.subplots(figsize=(7.2, 3.3))
+    vals = [0.0 if not np.isfinite(v) else float(v) for v in values]
+    y_pos = np.arange(len(labels))
+    colors = ["#0f766e" if v >= 0 else "#a12626" for v in vals]
+    ax.barh(y_pos, vals, color=colors, alpha=0.88)
+    ax.axvline(0, color="#111827", linewidth=0.8)
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(labels, fontsize=8)
+    ax.invert_yaxis()
+    ax.set_title(title, fontsize=11, loc="left")
+    ax.set_xlabel(xlabel)
+    ax.grid(True, axis="x", alpha=0.25)
+    ax.tick_params(axis="x", labelsize=8)
+    return _chart_to_base64(fig)
+
+
+def _stacked_horizontal_bar_chart(frame: pd.DataFrame, label_col: str, value_cols: list[str], title: str, *, xlabel: str = "") -> str:
+    data = frame[[label_col, *value_cols]].copy()
+    for col in value_cols:
+        data[col] = pd.to_numeric(data[col], errors="coerce").fillna(0.0)
+    fig, ax = plt.subplots(figsize=(7.2, 3.8))
+    y_pos = np.arange(len(data))
+    left = np.zeros(len(data))
+    colors = ["#2563eb", "#d97706", "#7c3aed", "#0f766e"]
+    legend_labels = {
+        "성장 기여": "Growth",
+        "물가/원자재 기여": "Inflation",
+        "정책/금리 기여": "Policy/Rates",
+        "위험선호 기여": "Risk Appetite",
+    }
+    for idx, col in enumerate(value_cols):
+        values = data[col].astype(float).values
+        ax.barh(y_pos, values, left=left, label=legend_labels.get(col, col), color=colors[idx % len(colors)], alpha=0.86)
+        left += values
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(data[label_col].astype(str).tolist(), fontsize=8)
+    ax.invert_yaxis()
+    ax.set_title(title, fontsize=11, loc="left")
+    ax.set_xlabel(xlabel)
+    ax.grid(True, axis="x", alpha=0.25)
+    ax.legend(loc="lower right", fontsize=7, frameon=False)
+    ax.tick_params(axis="x", labelsize=8)
     return _chart_to_base64(fig)
 
 
@@ -182,25 +271,43 @@ def _chart_card(title: str, image: str) -> str:
 
 
 def _page_charts(page: str, dashboard: MacroDashboard) -> str:
-    scores = dashboard.scores.set_index("점수")["값"]
-    score_label_map = {
-        "성장 모멘텀": "Growth",
-        "인플레/원자재 압력": "Inflation",
-        "정책 긴축도": "Policy",
-        "위험선호": "Risk Appetite",
-        "침체 리스크": "Recession",
-        "유동성": "Liquidity",
-    }
-    plot_scores = scores.rename(index=score_label_map)
     if page == "overview":
+        comm = dashboard.commodity_series
+        overview_returns = {
+            "S&P 500": dashboard.market_series["S&P 500"],
+            "DXY": dashboard.market_series["DXY"],
+            "WTI": comm["WTI Crude"],
+            "Gold": comm["Gold"],
+            "Silver": comm["Silver"],
+            "Copper": comm["Copper"],
+        }
         charts = [
             ("위험자산, 달러, 금 흐름", _line_chart(dashboard.market_series, "S&P 500 / DXY / Gold Base 100", normalize=True)),
-            ("거시 점수", _bar_chart(plot_scores.index.astype(str).tolist(), plot_scores.astype(float).tolist(), "Macro Scores", ylabel="score")),
+            (
+                "핵심 자산 60D 변화율",
+                _horizontal_bar_chart(
+                    list(overview_returns.keys()),
+                    [float((series.dropna().iloc[-1] / series.dropna().iloc[-61] - 1.0) * 100.0) if len(series.dropna()) > 60 else np.nan for series in overview_returns.values()],
+                    "Cross-asset 60D Returns",
+                    xlabel="%",
+                ),
+            ),
         ]
     elif page == "regime":
+        scenarios = dashboard.regime_scenarios
         charts = [
-            ("레짐 점수 분해", _bar_chart(plot_scores.index.astype(str).tolist(), plot_scores.astype(float).tolist(), "Regime Score Breakdown", ylabel="score")),
-            ("S&P 500과 10Y-2Y 커브", _line_chart(pd.concat([_normalize(dashboard.market_series[["S&P 500"]]), dashboard.rate_series[["10Y-2Y"]]], axis=1), "Equity Trend and Yield Curve")),
+            ("레짐 시나리오 근접도", _horizontal_bar_chart(scenarios["시나리오"].astype(str).tolist(), scenarios["근접도"].astype(float).tolist(), "Regime Scenario Proximity", xlabel="score")),
+            (
+                "S&P 500과 10Y-2Y 커브",
+                _dual_axis_line_chart(
+                    dashboard.market_series[["S&P 500"]],
+                    dashboard.rate_series[["10Y-2Y"]],
+                    "Equity Trend and Yield Curve",
+                    left_ylabel="S&P 500 base 100",
+                    right_ylabel="10Y-2Y %p",
+                    normalize_left=True,
+                ),
+            ),
         ]
     elif page == "rates":
         charts = [
@@ -210,8 +317,29 @@ def _page_charts(page: str, dashboard: MacroDashboard) -> str:
     elif page == "risk":
         risk = dashboard.risk_series
         charts = [
-            ("S&P 500과 낙폭", _line_chart(pd.concat([_normalize(risk[["S&P 500"]]), risk[["Drawdown"]]], axis=1), "S&P 500 Base 100 and Drawdown")),
+            (
+                "S&P 500과 낙폭",
+                _dual_axis_line_chart(
+                    risk[["S&P 500"]],
+                    risk[["Drawdown"]],
+                    "S&P 500 and Drawdown",
+                    left_ylabel="S&P 500 base 100",
+                    right_ylabel="drawdown %",
+                    normalize_left=True,
+                ),
+            ),
             ("20D 연율 변동성", _line_chart(risk[["20D Ann Vol"]], "Rolling 20D Annualized Volatility", ylabel="annual %")),
+            ("옵션 스트레스: VIX", _line_chart(dashboard.stress_series[["VIX"]], "VIX", ylabel="index level")),
+            (
+                "신용 스트레스: 회사채 스프레드",
+                _dual_axis_line_chart(
+                    dashboard.stress_series[["IG OAS", "Baa-AAA"]],
+                    dashboard.stress_series[["HY OAS"]],
+                    "Credit Spreads",
+                    left_ylabel="IG / Baa-AAA %p",
+                    right_ylabel="HY OAS %p",
+                ),
+            ),
         ]
     elif page == "dollar":
         comm = dashboard.commodity_series
@@ -222,9 +350,19 @@ def _page_charts(page: str, dashboard: MacroDashboard) -> str:
         ]
     else:
         playbook = dashboard.sector_playbook
+        attribution = dashboard.sector_attribution
         charts = [
-            ("섹터 선호 점수", _bar_chart(playbook["섹터"].astype(str).tolist(), playbook["선호 점수"].astype(float).tolist(), "Sector Preference Scores", ylabel="score")),
-            ("거시 점수", _bar_chart(plot_scores.index.astype(str).tolist(), plot_scores.astype(float).tolist(), "Macro Scores", ylabel="score")),
+            ("섹터 선호 점수", _horizontal_bar_chart(playbook["섹터"].astype(str).tolist(), playbook["선호 점수"].astype(float).tolist(), "Sector Preference Scores", xlabel="score")),
+            (
+                "섹터 점수 기여도",
+                _stacked_horizontal_bar_chart(
+                    attribution,
+                    "섹터",
+                    ["성장 기여", "물가/원자재 기여", "정책/금리 기여", "위험선호 기여"],
+                    "Sector Score Attribution",
+                    xlabel="score",
+                ),
+            ),
         ]
     return '<div class="macro-grid two macro-chart-grid">' + "".join(_chart_card(title, image) for title, image in charts) + "</div>"
 
@@ -234,6 +372,7 @@ def _overview_page(dashboard: MacroDashboard) -> str:
     {_hero(dashboard)}
     {_macro_nav("overview")}
     {_page_charts("overview", dashboard)}
+    <section class="service-card"><h2>크로스에셋 펄스</h2>{_table(dashboard.macro_pulse, table_class="macro-wide-table")}</section>
     <div class="macro-grid two">
       <section class="service-card"><h2>핵심 요약</h2>{_table(dashboard.summary)}</section>
       <section class="service-card"><h2>거시 점수</h2>{_score_bars(dashboard.scores)}</section>
@@ -246,16 +385,18 @@ def _regime_page(dashboard: MacroDashboard) -> str:
     scores = dashboard.scores.set_index("점수")["값"]
     notes = pd.DataFrame(
         [
-            {"축": "성장", "읽는 법": "S&P 500, 구리, 장단기 커브를 함께 봅니다.", "현재 점수": _fmt(scores.get("성장 모멘텀"))},
-            {"축": "물가/원자재", "읽는 법": "금리, 달러, 원자재 바스켓이 높을수록 압력이 큽니다.", "현재 점수": _fmt(scores.get("인플레/원자재 압력"))},
-            {"축": "정책", "읽는 법": "2년 금리 중심으로 긴축 부담을 봅니다.", "현재 점수": _fmt(scores.get("정책 긴축도"))},
-            {"축": "위험선호", "읽는 법": "수익률, 낙폭, 변동성의 조합입니다.", "현재 점수": _fmt(scores.get("위험선호"))},
+            {"축": "성장", "읽는 법": "S&P 500 단기 모멘텀, 구리 흐름, 10Y-2Y 커브를 함께 봅니다. 주식과 구리가 강하고 커브가 덜 눌리면 실물 성장 기대가 살아 있다는 뜻이고, 셋이 엇갈리면 반등의 질을 낮게 봅니다.", "현재 점수": _fmt(scores.get("성장 모멘텀"))},
+            {"축": "물가/원자재", "읽는 법": "10년 금리, 달러, 원자재 바스켓을 묶어 비용 압력과 인플레 기대를 봅니다. 높을수록 기업 마진과 할인율에 부담이 생기므로 가격 전가력 있는 업종을 더 중시합니다.", "현재 점수": _fmt(scores.get("인플레/원자재 압력"))},
+            {"축": "정책", "읽는 법": "2년 금리를 중심으로 시장이 예상하는 정책금리 부담을 읽습니다. 높은 점수는 금리 인하 기대가 약하거나 긴축 부담이 남아 있다는 뜻이라 장기 성장주 멀티플에는 불리합니다.", "현재 점수": _fmt(scores.get("정책 긴축도"))},
+            {"축": "위험선호", "읽는 법": "수익률, 낙폭, 변동성을 조합해 시장이 위험을 받아들이는지 봅니다. 점수가 높으면 리스크 온, 낮으면 지수 베타보다 현금흐름과 방어력을 우선하는 구간으로 해석합니다.", "현재 점수": _fmt(scores.get("위험선호"))},
         ]
     )
     return f"""
     {_hero(dashboard)}
     {_macro_nav("regime")}
     {_page_charts("regime", dashboard)}
+    <section class="service-card"><h2>레짐 시나리오 근접도</h2>{_table(dashboard.regime_scenarios, table_class="macro-wide-table")}</section>
+    <section class="service-card"><h2>FRED 펀더멘털 체크</h2>{_table(dashboard.fred_macro, table_class="macro-wide-table")}</section>
     <section class="service-card"><h2>레짐 분해</h2>{_table(notes)}</section>
     <section class="service-card"><h2>점수 상세</h2>{_score_bars(dashboard.scores)}</section>
     """
@@ -266,8 +407,9 @@ def _rates_page(dashboard: MacroDashboard) -> str:
     {_hero(dashboard)}
     {_macro_nav("rates")}
     {_page_charts("rates", dashboard)}
+    <section class="service-card"><h2>커브 진단</h2>{_table(dashboard.rate_diagnostics, table_class="macro-wide-table")}</section>
     <section class="service-card"><h2>금리와 커브</h2>{_table(dashboard.rates, table_class="macro-rates-table")}</section>
-    <section class="service-card"><h2>해석</h2><p class="service-muted">2년 금리는 정책 기대, 10년 금리는 성장/물가 기대, 10Y-2Y 스프레드는 경기 사이클 신호로 봅니다.</p></section>
+    <section class="service-card"><h2>해석</h2><p class="service-muted">2년 금리는 시장이 예상하는 정책금리 경로, 10년 금리는 성장·물가·기간프리미엄이 섞인 장기 할인율, 10Y-2Y와 10Y-3M 스프레드는 경기 사이클의 압력을 읽는 지표입니다. 금리 레벨과 커브 방향을 같이 봐야 성장주 멀티플 부담인지, 경기 둔화 신호인지 구분할 수 있습니다.</p></section>
     """
 
 
@@ -276,8 +418,9 @@ def _risk_page(dashboard: MacroDashboard) -> str:
     {_hero(dashboard)}
     {_macro_nav("risk")}
     {_page_charts("risk", dashboard)}
+    <section class="service-card"><h2>옵션·신용 스트레스</h2>{_table(dashboard.risk_stress, table_class="macro-wide-table")}</section>
+    <section class="service-card"><h2>시장 내부 폭</h2>{_table(dashboard.risk_breadth, table_class="macro-wide-table")}</section>
     <section class="service-card"><h2>위험자산 온도</h2>{_table(dashboard.risk_assets)}</section>
-    <section class="service-card"><h2>주요 지표</h2>{_table(dashboard.indicators)}</section>
     """
 
 
@@ -286,8 +429,8 @@ def _dollar_page(dashboard: MacroDashboard) -> str:
     {_hero(dashboard)}
     {_macro_nav("dollar")}
     {_page_charts("dollar", dashboard)}
+    <section class="service-card"><h2>달러 민감도</h2>{_table(dashboard.dollar_sensitivity, table_class="macro-wide-table")}</section>
     <section class="service-card"><h2>달러/원자재 압력</h2>{_table(dashboard.dollar_commodities)}</section>
-    <section class="service-card"><h2>데이터 출처</h2>{_table(dashboard.sources)}</section>
     """
 
 
@@ -296,8 +439,9 @@ def _playbook_page(dashboard: MacroDashboard) -> str:
     {_hero(dashboard)}
     {_macro_nav("playbook")}
     {_page_charts("playbook", dashboard)}
+    <section class="service-card"><h2>섹터 점수 기여도</h2>{_table(dashboard.sector_attribution, table_class="macro-wide-table")}</section>
     <section class="service-card"><h2>섹터 플레이북</h2>{_table(dashboard.sector_playbook)}</section>
-    <section class="service-card"><h2>사용 방법</h2><p class="service-muted">이 표는 매수/매도 신호가 아니라 현재 거시 환경에서 어떤 업종 해석을 먼저 확인할지 정하는 우선순위입니다.</p></section>
+    <section class="service-card"><h2>사용 방법</h2><p class="service-muted">이 표는 매수/매도 신호가 아니라 현재 거시 환경에서 어떤 업종을 먼저 점검할지 정하는 우선순위입니다. 선호 점수가 높아도 해당 업종의 이익 추정, 밸류에이션, 내부 breadth가 나쁘면 보류하고, 점수가 낮아도 개별 기업의 방어력이나 특수 모멘텀이 있으면 예외로 다룹니다.</p></section>
     """
 
 
@@ -344,6 +488,10 @@ def render_body(page: str, *, start_date: str | None = None, lookback_days: int 
       .macro-score-track {{ height:10px; background:#e5e7eb; border-radius:999px; overflow:hidden; }}
       .macro-score-track span {{ display:block; height:100%; background:var(--accent); }}
       .macro-score-value {{ font-variant-numeric:tabular-nums; text-align:right; font-size:12px; color:var(--muted); }}
+      .macro-wide-table th,
+      .macro-wide-table td {{ white-space:normal; overflow-wrap:break-word; word-break:keep-all; }}
+      .macro-wide-table th:last-child,
+      .macro-wide-table td:last-child {{ min-width:18rem; max-width:34rem; }}
       .macro-rates-table th:last-child,
       .macro-rates-table td:last-child {{ min-width:22rem; max-width:32rem; white-space:normal; overflow-wrap:break-word; word-break:keep-all; }}
       @media (max-width:900px) {{
