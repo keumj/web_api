@@ -223,7 +223,7 @@ def _base_css(is_sub_page: bool = False) -> str:
 def _page_head(title: str, is_sub_page: bool = False) -> str:
     return (
         '<div class="page-head">'
-        '<h1>Stock News Lab | S&P 500</h1>'
+        '<h1>News Lab | S&P 500</h1>'
         '<div class="page-credit">Keumj 제작</div>'
         "</div>"
     )
