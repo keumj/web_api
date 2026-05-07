@@ -20,8 +20,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$script = Join-Path $root 'run_lan_service.cmd'; " ^
   "if (-not (Test-Path $script)) { Write-Error ('Missing server script: ' + $script); exit 1 }; " ^
   "Start-Process -FilePath $script -WorkingDirectory $root -WindowStyle Hidden; " ^
-  "Start-Sleep -Seconds 3; " ^
-  "$started = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; " ^
+  "$started = $null; " ^
+  "for ($i = 0; $i -lt 20; $i++) { " ^
+  "  Start-Sleep -Seconds 1; " ^
+  "  $started = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; " ^
+  "  if ($started) { break } " ^
+  "}; " ^
   "if ($started) { Write-Host ('Started FastAPI server on port ' + $port); exit 0 }; " ^
   "Write-Host ('FastAPI server start requested; port ' + $port + ' is not listening yet.'); exit 0"
 

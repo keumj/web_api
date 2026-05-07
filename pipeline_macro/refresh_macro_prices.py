@@ -14,6 +14,11 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     Fred = None
 
+try:
+    import yfinance as yf
+except Exception:  # pragma: no cover - optional dependency
+    yf = None
+
 from .macro_data_store import (
     ALL_SPECS,
     FRED_SPECS,
@@ -59,7 +64,37 @@ def _fetch_fred_series(fred: Fred | None, spec: MacroSeriesSpec, start: pd.Times
     return series, f"fred:{spec.fred_id}"
 
 
+def _fetch_yahoo_series(spec: MacroSeriesSpec, start: pd.Timestamp) -> tuple[pd.Series | None, str | None]:
+    if yf is None or not spec.yahoo_symbol:
+        return None, None
+    try:
+        raw = yf.download(
+            spec.yahoo_symbol,
+            start=start.strftime("%Y-%m-%d"),
+            progress=False,
+            auto_adjust=False,
+            threads=False,
+        )
+    except Exception as exc:
+        _log(f"Yahoo failed for {spec.series_id} ({spec.yahoo_symbol}): {type(exc).__name__}: {exc}")
+        return None, None
+    if not isinstance(raw, pd.DataFrame) or raw.empty:
+        return None, None
+    close = raw.get("Close")
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0] if not close.empty else None
+    if close is None:
+        return None, None
+    series = normalize_series(pd.Series(close), series_id=spec.series_id, start_date=start)
+    if series.empty:
+        return None, None
+    return series, f"yahoo:{spec.yahoo_symbol}"
+
+
 def _load_series(spec: MacroSeriesSpec, *, fred: Fred | None, start: pd.Timestamp) -> tuple[pd.Series | None, str | None]:
+    yahoo_series, yahoo_source = _fetch_yahoo_series(spec, start)
+    if yahoo_series is not None and not yahoo_series.empty:
+        return yahoo_series, yahoo_source
     if spec.local_csv:
         local = read_local_series(spec.local_csv, series_id=spec.local_name or spec.series_id, start_date=start)
         if local is not None and not local.empty:

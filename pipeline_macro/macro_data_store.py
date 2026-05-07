@@ -19,6 +19,7 @@ class MacroSeriesSpec:
     fred_id: str | None = None
     local_csv: str | None = None
     local_name: str | None = None
+    yahoo_symbol: str | None = None
 
 
 TREASURY_SERIES_IDS = ["DGS1MO", "DGS3MO", "DGS6MO", "DGS1", "DGS2", "DGS3", "DGS5", "DGS7", "DGS10", "DGS20", "DGS30"]
@@ -44,7 +45,7 @@ FRED_SPECS: list[MacroSeriesSpec] = [
 ]
 
 LOCAL_ONLY_SPECS: list[MacroSeriesSpec] = [
-    MacroSeriesSpec("DXY", "market", "daily", local_csv="data/dxy.csv", local_name="DXY"),
+    MacroSeriesSpec("DXY", "market", "daily", local_csv="data/dxy.csv", local_name="DXY", yahoo_symbol="DX-Y.NYB"),
 ]
 
 ALL_SPECS = [*FRED_SPECS, *LOCAL_ONLY_SPECS]

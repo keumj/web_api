@@ -19,6 +19,13 @@ TRACKED_REFRESH_TARGETS = (
 STALE_RUNNING_SECONDS = 8 * 60 * 60
 
 
+def _int_value(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def state_path(root: Path | None = None) -> Path:
     return (root or settings.project_root) / STATE_RELATIVE_PATH
 
@@ -207,6 +214,24 @@ def _seconds_since(value: str | None) -> float | None:
     return (datetime.now().astimezone() - parsed).total_seconds()
 
 
+def _data_refresh_completed(state: dict[str, Any]) -> bool:
+    if str(state.get("status") or "") != "success" or _int_value(state.get("last_exit_code")) != 0:
+        return False
+    data = state.get("data") if isinstance(state.get("data"), dict) else {}
+    shared_sqlite = data.get("shared_sqlite") if isinstance(data.get("shared_sqlite"), dict) else {}
+    macro_sqlite = data.get("macro_sqlite") if isinstance(data.get("macro_sqlite"), dict) else {}
+    prices = data.get("prices") if isinstance(data.get("prices"), dict) else {}
+    macro = data.get("macro") if isinstance(data.get("macro"), dict) else {}
+    return (
+        bool(shared_sqlite.get("exists"))
+        and _int_value(shared_sqlite.get("size_bytes")) > 0
+        and bool(macro_sqlite.get("exists"))
+        and _int_value(macro_sqlite.get("size_bytes")) > 0
+        and _int_value(prices.get("rows")) > 0
+        and _int_value(macro.get("rows")) > 0
+    )
+
+
 def notice_state(root: Path | None = None) -> dict[str, Any]:
     root_dir = root or settings.project_root
     state = read_state(root_dir)
@@ -221,6 +246,7 @@ def notice_state(root: Path | None = None) -> dict[str, Any]:
     running_age = _seconds_since(state.get("last_started_at") if status == "running" else None)
     stale_running = running_age is not None and running_age > STALE_RUNNING_SECONDS
     git = state.get("git") if isinstance(state.get("git"), dict) else {}
+    refresh_completed = _data_refresh_completed(state)
 
     if not exists or state.get("state_read_error"):
         severity = "warning"
@@ -234,12 +260,18 @@ def notice_state(root: Path | None = None) -> dict[str, Any]:
     elif git.get("error"):
         severity = "error"
         headline = "SQLite Git 상태 확인이 필요합니다."
-    elif git.get("changed"):
-        severity = "warning"
-        headline = "GitHub에 아직 반영되지 않은 SQLite 변경이 있습니다."
     elif status == "running":
         severity = "warning"
         headline = "데이터 갱신 작업이 실행 중입니다."
+    elif refresh_completed and git.get("changed"):
+        severity = "warning"
+        headline = "SQLite 자동갱신은 성공했고, GitHub에 반영되지 않은 변경이 있습니다."
+    elif refresh_completed:
+        severity = "success"
+        headline = "SQLite 자동갱신이 정상 완료됐습니다."
+    elif git.get("changed"):
+        severity = "warning"
+        headline = "GitHub에 아직 반영되지 않은 SQLite 변경이 있습니다."
     else:
         severity = "success"
         headline = "현재 추적 중인 SQLite 변경은 없습니다."
@@ -247,6 +279,7 @@ def notice_state(root: Path | None = None) -> dict[str, Any]:
     state["notice"] = {
         "severity": severity,
         "headline": headline,
+        "refresh_completed": refresh_completed,
         "stale_running": stale_running,
         "running_age_seconds": running_age,
     }
