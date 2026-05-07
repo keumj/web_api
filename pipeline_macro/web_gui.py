@@ -255,7 +255,7 @@ def _hero(dashboard: MacroDashboard) -> str:
     return f"""
     <div class="macro-hero">
       <div>
-        <h1>거시 분석 | S&P 500</h1>
+        <h1>Macro Analysis | S&P 500</h1>
         <p>기준일 {html.escape(dashboard.as_of_date)}. 금리, 달러, 원자재, S&P 500 위험선호를 묶어 종목/뉴스/포트폴리오 분석의 배경 환경을 정리합니다.</p>
       </div>
       <div class="macro-metrics">
