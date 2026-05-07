@@ -220,10 +220,10 @@ def _base_css(is_sub_page: bool = False) -> str:
     """
 
 
-def _page_head(title: str, is_sub_page: bool = False) -> str:
+def _page_head() -> str:
     return (
         '<div class="page-head">'
-        '<h1>Stock News Lab | S&P 500</h1>'
+        '<h1>News Lab | S&P 500</h1>'
         '<div class="page-credit">Keumj 제작</div>'
         "</div>"
     )
@@ -663,7 +663,7 @@ def _shared_form(form: dict[str, str], *, action: str, button_label: str) -> str
 def _layout_page(
     *,
     active: str,
-    title: str,
+    #title: str,
     subtitle: str,
     ctx: _PageContext,
     action: str,
@@ -728,7 +728,7 @@ def _overview_page(ctx: _PageContext, is_sub_page: bool = False) -> str:
         """
     return _layout_page(
         active="overview",
-        title="뉴스 개요",
+        #title="뉴스 개요",
         subtitle="분석 계산 없이 최근 뉴스 데이터 자체를 빠르게 훑는 개요 페이지",
         ctx=ctx,
         action="/run_overview",
@@ -761,7 +761,7 @@ def _html_event_page(ctx: _PageContext, is_sub_page: bool = False) -> str:
         """
     return _layout_page(
         active="event",
-        title="이벤트 스터디",
+        #title="이벤트 스터디",
         subtitle="특정 키워드 뉴스 이후 1~5거래일 반응을 통계적으로 확인하는 페이지",
         ctx=ctx,
         action="/run_event_study",
@@ -794,7 +794,7 @@ def _html_spillover_page(ctx: _PageContext, is_sub_page: bool = False) -> str:
         """
     return _layout_page(
         active="spillover",
-        title="섹터 전이",
+        #title="섹터 전이",
         subtitle="한 종목 뉴스가 같은 섹터 다른 종목 수익률로 얼마나 번지는지 보는 페이지",
         ctx=ctx,
         action="/run_sector_spillover",
@@ -824,7 +824,7 @@ def _html_divergence_page(ctx: _PageContext, is_sub_page: bool = False) -> str:
         """
     return _layout_page(
         active="divergence",
-        title="뉴스-프라이스 다이버전스",
+        #title="뉴스-프라이스 다이버전스",
         subtitle="긍정 뉴스인데도 약하고, 부정 뉴스인데도 버티는 이상 반응을 잡는 페이지",
         ctx=ctx,
         action="/run_divergence",
@@ -854,7 +854,7 @@ def _html_expectation_page(ctx: _PageContext, is_sub_page: bool = False) -> str:
         """
     return _layout_page(
         active="expectation",
-        title="기대 리셋",
+        #title="기대 리셋",
         subtitle="강한 뉴스가 나왔는데도 가격 반응이 약한 종목을 선반영 후보로 보는 페이지",
         ctx=ctx,
         action="/run_expectation_reset",
@@ -887,7 +887,7 @@ def _html_volatility_page(ctx: _PageContext, is_sub_page: bool = False) -> str:
         """
     return _layout_page(
         active="volatility",
-        title="변동성 레짐",
+        #title="변동성 레짐",
         subtitle="뉴스 이후 5거래일 변동성이 직전 구간보다 얼마나 커졌는지 비교하는 페이지",
         ctx=ctx,
         action="/run_volatility_regime",
@@ -918,7 +918,7 @@ def _html_topics_page(ctx: _PageContext, is_sub_page: bool = False) -> str:
         """
     return _layout_page(
         active="topics",
-        title="토픽 모델링",
+        #title="토픽 모델링",
         subtitle="최근 뉴스 제목을 묶어 시장을 관통하는 테마를 압축해서 보는 페이지",
         ctx=ctx,
         action="/run_topic_modeling",
