@@ -251,12 +251,12 @@ def _score_bars(scores: pd.DataFrame) -> str:
     return "<div class='macro-score-grid'>" + "".join(rows) + "</div>"
 
 
-def _hero(dashboard: MacroDashboard) -> str:
+def _hero(dashboard: MacroDashboard, description: str) -> str:
     return f"""
     <div class="macro-hero">
       <div>
         <h1>Macro Analysis | S&P 500</h1>
-        <p>기준일 {html.escape(dashboard.as_of_date)}. 금리, 달러, 원자재, S&P 500 위험선호를 묶어 종목/뉴스/포트폴리오 분석의 배경 환경을 정리합니다.</p>
+        <p><strong>기준일 {html.escape(dashboard.as_of_date)}</strong> | {html.escape(description)}</p>
       </div>
       <div class="macro-metrics">
         <div><span>리스크</span><strong>{html.escape(dashboard.risk_level)}</strong></div>
@@ -369,7 +369,7 @@ def _page_charts(page: str, dashboard: MacroDashboard) -> str:
 
 def _overview_page(dashboard: MacroDashboard) -> str:
     return f"""
-    {_hero(dashboard)}
+    {_hero(dashboard, PAGES["overview"][1])}
     {_macro_nav("overview")}
     {_page_charts("overview", dashboard)}
     <section class="service-card"><h2>크로스에셋 펄스</h2>{_table(dashboard.macro_pulse, table_class="macro-wide-table")}</section>
@@ -392,7 +392,7 @@ def _regime_page(dashboard: MacroDashboard) -> str:
         ]
     )
     return f"""
-    {_hero(dashboard)}
+    {_hero(dashboard, PAGES["regime"][1])}
     {_macro_nav("regime")}
     {_page_charts("regime", dashboard)}
     <section class="service-card"><h2>레짐 시나리오 근접도</h2>{_table(dashboard.regime_scenarios, table_class="macro-wide-table")}</section>
@@ -404,7 +404,7 @@ def _regime_page(dashboard: MacroDashboard) -> str:
 
 def _rates_page(dashboard: MacroDashboard) -> str:
     return f"""
-    {_hero(dashboard)}
+    {_hero(dashboard, PAGES["rates"][1])}
     {_macro_nav("rates")}
     {_page_charts("rates", dashboard)}
     <section class="service-card"><h2>커브 진단</h2>{_table(dashboard.rate_diagnostics, table_class="macro-wide-table")}</section>
@@ -415,7 +415,7 @@ def _rates_page(dashboard: MacroDashboard) -> str:
 
 def _risk_page(dashboard: MacroDashboard) -> str:
     return f"""
-    {_hero(dashboard)}
+    {_hero(dashboard, PAGES["risk"][1])}
     {_macro_nav("risk")}
     {_page_charts("risk", dashboard)}
     <section class="service-card"><h2>옵션·신용 스트레스</h2>{_table(dashboard.risk_stress, table_class="macro-wide-table")}</section>
@@ -426,7 +426,7 @@ def _risk_page(dashboard: MacroDashboard) -> str:
 
 def _dollar_page(dashboard: MacroDashboard) -> str:
     return f"""
-    {_hero(dashboard)}
+    {_hero(dashboard, PAGES["dollar"][1])}
     {_macro_nav("dollar")}
     {_page_charts("dollar", dashboard)}
     <section class="service-card"><h2>달러 민감도</h2>{_table(dashboard.dollar_sensitivity, table_class="macro-wide-table")}</section>
@@ -436,7 +436,7 @@ def _dollar_page(dashboard: MacroDashboard) -> str:
 
 def _playbook_page(dashboard: MacroDashboard) -> str:
     return f"""
-    {_hero(dashboard)}
+    {_hero(dashboard, PAGES["playbook"][1])}
     {_macro_nav("playbook")}
     {_page_charts("playbook", dashboard)}
     <section class="service-card"><h2>섹터 점수 기여도</h2>{_table(dashboard.sector_attribution, table_class="macro-wide-table")}</section>
