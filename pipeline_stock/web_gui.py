@@ -53,7 +53,7 @@ matplotlib.use("Agg")
 import matplotlib.dates as mdates  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 
-_APP_TITLE = "Stock Analysis Lab | S&P 500"
+_APP_TITLE = "Stock Analysis | S&P 500"
 
 @dataclass
 class _RunContext:
@@ -4353,7 +4353,7 @@ def _html_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P 500 - 주가 예측</title>
+  <title>Stock Analysis | S&P 500 - 주가 예측</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -4505,7 +4505,7 @@ def _html_walk_forward_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P 500 - 워크포워드 검증</title>
+  <title>Stock Analysis | S&P 500 - 워크포워드 검증</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -4622,7 +4622,7 @@ def _html_financial_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P 500 - 재무제표·밸류에이션</title>
+  <title>Stock Analysis | S&P 500 - 재무제표·밸류에이션</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -4736,7 +4736,7 @@ def _html_technical_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P 500 - 기술적 분석</title>
+  <title>Stock Analysis | S&P 500 - 기술적 분석</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -4863,7 +4863,7 @@ def _html_returns_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P 500 - 수익률 비교</title>
+  <title>Stock Analysis | S&P 500 - 수익률 비교</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -4985,7 +4985,7 @@ def _html_risk_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P 500 - 리스크 대시보드</title>
+  <title>Stock Analysis | S&P 500 - 리스크 대시보드</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -5114,7 +5114,7 @@ def _html_factor_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P 500 - 팩터·레짐 랩</title>
+  <title>Stock Analysis | S&P 500 - 팩터·레짐 랩</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""
@@ -5224,7 +5224,7 @@ def _html_decision_page(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stock Analysis Lab | S&P 500 - 의사결정 대시보드</title>
+  <title>Stock Analysis | S&P 500 - 의사결정 대시보드</title>
   <style>{_base_css()}</style>
 </head>
 <body>"""

@@ -223,7 +223,7 @@ def _base_css(is_sub_page: bool = False) -> str:
 def _page_head(title: str, is_sub_page: bool = False) -> str:
     return (
         '<div class="page-head">'
-        f"<h1>{html.escape(title)}</h1>"
+        '<h1>News Lab | S&P 500</h1>'
         '<div class="page-credit">Keumj 제작</div>'
         "</div>"
     )
@@ -678,7 +678,7 @@ def _layout_page(
         css = "err" if ctx.ticker_note_error else "ok"
         notices += f'<div class="notice {css}"><pre>{html.escape(ctx.ticker_note)}</pre></div>'
     elif _has_sections(ctx.dashboard, active):
-        notices += '<div class="notice ok">현재 페이지 기준으로 최신 분석 결과를 불러왔습니다.</div>' # This notice should be handled by the main GUI
+        notices += '<div class="notice ok">현재 페이지 기준으로 최신 분석 결과를 불러왔습니다.</div>'
     
     head_content = ""
     if not is_sub_page:
@@ -694,10 +694,7 @@ def _layout_page(
     
     body_content = f"""
   <div class="wrap">
-    {_page_head(title)}
-    <div class="sub">{html.escape(subtitle)}</div>
-    {_nav(active)}
-    {_shared_form(ctx.form, action=action, button_label=button_label)}
+    {_page_head(title)} <h2 style="margin: 0 0 5px; font-size: 18px; color: var(--brand);">{html.escape(title)}</h2> <div class="sub" style="margin-bottom: 15px;">{html.escape(subtitle)}</div> {_nav(active)} {_shared_form(ctx.form, action=action, button_label=button_label)}
     {notices}
     {_summary_metrics(ctx)}
     {content_html}
@@ -1245,7 +1242,7 @@ def _build_dashboard_from_form(form: dict[str, str], page_key: str) -> StockNews
         horizon_days = min(horizon_days, int(os.getenv("KEUMJM_NEWS_MAX_HORIZON_DAYS", "3") or "3"))
         divergence_top_n = min(divergence_top_n, int(os.getenv("KEUMJM_NEWS_MAX_TOP_N", "10") or "10"))
         topic_count = min(topic_count, int(os.getenv("KEUMJM_NEWS_MAX_TOPIC_COUNT", "3") or "3"))
-    return build_stock_news_dashboard( # This function needs to be exposed
+    return build_stock_news_dashboard(
         event_keywords=form.get("event_keywords", DEFAULT_EVENT_KEYWORDS),
         ticker=ticker,
         lookback_days=lookback_days,
