@@ -209,7 +209,7 @@ def shell(
     }
     admin_link = f'<a class="{active_class["admin"]}" href="/admin/users">사용자 관리</a>' if admin else ""
     api_link = '<a href="/docs">API</a>' if admin else ""
-    macro_link = f'<a class="{active_class["macro"]}" href="/macro/overview">거시분석</a>' if settings.enable_macro else ""
+    macro_link = f'<a class="{active_class["macro"]}" href="/macro/overview">거시 분석</a>' if settings.enable_macro else ""
     header_display = "display:none;" if start_page_only else "block"
     top_nav_style = "display:none;" if start_page_only else ""
     brand_style = "display:none;" if start_page_only else ""
