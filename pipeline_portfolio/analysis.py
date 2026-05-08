@@ -91,6 +91,7 @@ class PortfolioDashboard:
     scoring: pd.DataFrame
     diagnostics: dict[str, str]
     cumulative_chart: str | None = None
+    weekly_return_chart: str | None = None
     sector_contribution_chart: str | None = None
     style_exposure_chart: str | None = None
     sector_allocation_chart: str | None = None
@@ -418,6 +419,62 @@ def _load_component_frame(max_symbols: int = 0) -> tuple[pd.DataFrame, str]:
     if requested > 0:
         out = out.head(requested).reset_index(drop=True)
     return out, source
+
+
+def _largest_remainder_counts(weights: pd.Series, total_count: int, *, min_count: int = 1) -> pd.Series:
+    clean = pd.to_numeric(weights, errors="coerce").fillna(0.0)
+    clean = clean[clean > 0]
+    if clean.empty or total_count <= 0:
+        return pd.Series(dtype=int)
+    clean = clean / clean.sum()
+    total = max(int(total_count), 0)
+    minimum = min(max(int(min_count), 0), total)
+    counts = pd.Series(minimum, index=clean.index, dtype=int)
+    remaining = total - int(counts.sum())
+    if remaining < 0:
+        counts = pd.Series(0, index=clean.index, dtype=int)
+        remaining = total
+    quotas = clean * remaining
+    counts = counts + np.floor(quotas).astype(int)
+    leftovers = total - int(counts.sum())
+    if leftovers > 0:
+        remainders = (quotas - np.floor(quotas)).sort_values(ascending=False)
+        for sector in remainders.index[:leftovers]:
+            counts.loc[sector] += 1
+    return counts[counts > 0].astype(int)
+
+
+def _select_sector_cap_universe(
+    full_sector_frame: pd.DataFrame,
+    market_caps: pd.DataFrame,
+    *,
+    universe_size: int,
+) -> pd.DataFrame:
+    if full_sector_frame.empty:
+        return full_sector_frame.copy()
+    requested = max(int(universe_size), 20)
+    frame = full_sector_frame.copy()
+    frame["Symbol"] = frame["Symbol"].astype(str).str.strip().str.upper()
+    frame["Sector"] = frame["Sector"].astype(str).str.strip().replace({"": "Unknown", "nan": "Unknown"})
+    frame = frame.dropna(subset=["Symbol"]).drop_duplicates(subset=["Symbol"], keep="last")
+    if market_caps.empty:
+        selected = frame.head(requested).copy()
+    else:
+        latest_caps = market_caps.ffill().iloc[-1].reindex(frame["Symbol"]).astype(float)
+        frame["market_cap"] = latest_caps.to_numpy(dtype=float)
+        ranked = frame.dropna(subset=["market_cap"]).sort_values(["Sector", "market_cap"], ascending=[True, False])
+        sector_weights = ranked.groupby("Sector")["market_cap"].sum()
+        sector_counts = _largest_remainder_counts(sector_weights, min(requested, len(ranked)), min_count=1)
+        parts: list[pd.DataFrame] = []
+        for sector, count in sector_counts.items():
+            parts.append(ranked[ranked["Sector"] == sector].head(int(count)))
+        selected = pd.concat(parts, ignore_index=True) if parts else ranked.head(requested).copy()
+        if len(selected.index) < min(requested, len(ranked)):
+            missing = ranked[~ranked["Symbol"].isin(selected["Symbol"])]
+            selected = pd.concat([selected, missing.head(min(requested, len(ranked)) - len(selected.index))], ignore_index=True)
+        selected = selected.sort_values("market_cap", ascending=False).head(requested)
+
+    return selected.drop_duplicates(subset=["Symbol"], keep="first").reset_index(drop=True)
 
 
 def _sector_map(max_symbols: int = 0) -> tuple[dict[str, str], str]:
@@ -870,6 +927,46 @@ def _build_cumulative_return_chart(portfolio_daily: pd.Series, benchmark_daily: 
     ax.legend(loc="upper left", frameon=False)
     ax.grid(True, alpha=0.2)
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%y-%m-%d"))
+    fig.tight_layout()
+    return _render_chart_base64(fig)
+
+
+def _weekly_return_pct(series: pd.Series) -> pd.Series:
+    clean = pd.to_numeric(series, errors="coerce").dropna()
+    if clean.empty:
+        return pd.Series(dtype=float)
+    clean.index = pd.to_datetime(clean.index, errors="coerce")
+    clean = clean[clean.index.notna()].sort_index()
+    if clean.empty:
+        return pd.Series(dtype=float)
+    return clean.resample("W-FRI").apply(lambda values: (1.0 + values).prod() - 1.0) * 100.0
+
+
+def _build_weekly_return_chart(portfolio_daily: pd.Series, benchmark_daily: pd.Series, weeks: int = 26) -> str:
+    if portfolio_daily.empty or benchmark_daily.empty:
+        return ""
+    weekly = pd.concat(
+        [
+            _weekly_return_pct(portfolio_daily).rename("Portfolio"),
+            _weekly_return_pct(benchmark_daily).rename("S&P500"),
+        ],
+        axis=1,
+    ).dropna(how="all").tail(max(int(weeks), 1))
+    if weekly.empty:
+        return ""
+
+    x = np.arange(len(weekly.index))
+    width = 0.38
+    fig, ax = plt.subplots(figsize=(9, 4))
+    ax.bar(x - width / 2, weekly["Portfolio"].fillna(0.0), width, label="Portfolio", color="#0f4c81", alpha=0.88)
+    ax.bar(x + width / 2, weekly["S&P500"].fillna(0.0), width, label="S&P500", color="#b26a00", alpha=0.72)
+    ax.axhline(0, color="black", linewidth=0.8, alpha=0.65)
+    ax.set_title(f"Weekly Return: Portfolio vs S&P500 (Last {len(weekly)} Weeks)", fontsize=12, pad=10)
+    ax.set_ylabel("Return (%)")
+    ax.set_xticks(x)
+    ax.set_xticklabels([idx.strftime("%y-%m-%d") for idx in weekly.index], rotation=45, ha="right", fontsize=8)
+    ax.legend(loc="upper left", frameon=False)
+    ax.grid(axis="y", alpha=0.2)
     fig.tight_layout()
     return _render_chart_base64(fig)
 
@@ -1346,6 +1443,107 @@ def _portfolio_return_series(
     weights = weights.reindex(common).fillna(0.0)
     portfolio_daily = returns.mul(weights, axis=1).sum(axis=1, min_count=1)
     return portfolio_daily.dropna()
+
+
+def _trade_priority_frame(trades: pd.DataFrame) -> pd.DataFrame:
+    if trades.empty:
+        return trades.copy()
+    out = trades.copy()
+    out["_trade_day"] = pd.to_datetime(out["trade_date"], errors="coerce").dt.normalize()
+    out["_priority"] = np.where(out["ticker"].astype(str).str.upper().eq("CASH"), 0, 1)
+    return out.dropna(subset=["_trade_day"]).sort_values(["_trade_day", "_priority", "id"])
+
+
+def _apply_trade_to_nav_state(row: object, quantities: dict[str, float], cash_balance: float) -> tuple[float, float]:
+    ticker = str(getattr(row, "ticker", "")).strip().upper()
+    side = str(getattr(row, "side", "")).strip().upper()
+    qty = float(getattr(row, "quantity", 0.0) or 0.0)
+    price = float(getattr(row, "price", 0.0) or 0.0)
+    fees = float(getattr(row, "fees", 0.0) or 0.0)
+    gross = qty * price
+    external_flow = 0.0
+
+    if ticker == "CASH":
+        external_flow = gross if side == "BUY" else -gross
+        cash_balance += external_flow
+        return cash_balance, external_flow
+
+    if side == "BUY":
+        quantities[ticker] = float(quantities.get(ticker, 0.0)) + qty
+        cash_balance -= gross + fees
+    elif side == "SELL":
+        held = float(quantities.get(ticker, 0.0))
+        sell_qty = min(qty, held) if held > 0 else 0.0
+        quantities[ticker] = max(held - sell_qty, 0.0)
+        cash_balance += sell_qty * price - fees
+
+    return cash_balance, external_flow
+
+
+def _true_portfolio_return_series(
+    trades: pd.DataFrame,
+    close_history: pd.DataFrame,
+    *,
+    start_ts: pd.Timestamp,
+    end_ts: pd.Timestamp,
+) -> pd.Series:
+    if trades.empty or close_history.empty:
+        return pd.Series(dtype=float)
+
+    prices = close_history.copy()
+    prices.index = pd.to_datetime(prices.index, errors="coerce")
+    prices = prices[prices.index.notna()].sort_index().apply(pd.to_numeric, errors="coerce").ffill()
+    prices = prices.loc[(prices.index >= start_ts.normalize()) & (prices.index <= end_ts.normalize())]
+    if prices.empty:
+        return pd.Series(dtype=float)
+
+    ordered = _trade_priority_frame(trades)
+    if ordered.empty:
+        return pd.Series(dtype=float)
+
+    quantities: dict[str, float] = {}
+    cash_balance = 0.0
+    before_start = ordered[ordered["_trade_day"] < start_ts.normalize()]
+    for row in before_start.itertuples(index=False):
+        cash_balance, _ = _apply_trade_to_nav_state(row, quantities, cash_balance)
+
+    in_period = ordered[
+        (ordered["_trade_day"] >= start_ts.normalize())
+        & (ordered["_trade_day"] <= end_ts.normalize())
+    ].reset_index(drop=True)
+    trade_idx = 0
+
+    nav_values: list[float] = []
+    external_flows: list[float] = []
+    dates: list[pd.Timestamp] = []
+    for dt, price_row in prices.iterrows():
+        external_flow = 0.0
+        price_day = pd.Timestamp(dt).normalize()
+        while trade_idx < len(in_period.index) and pd.Timestamp(in_period.loc[trade_idx, "_trade_day"]) <= price_day:
+            row = in_period.iloc[trade_idx]
+            cash_balance, flow = _apply_trade_to_nav_state(row, quantities, cash_balance)
+            external_flow += flow
+            trade_idx += 1
+
+        stock_value = 0.0
+        for ticker, qty in quantities.items():
+            if qty <= 0 or ticker not in prices.columns:
+                continue
+            price = price_row.get(ticker)
+            if pd.notna(price):
+                stock_value += qty * float(price)
+        nav_values.append(float(cash_balance + stock_value))
+        external_flows.append(float(external_flow))
+        dates.append(pd.Timestamp(dt))
+
+    nav = pd.Series(nav_values, index=pd.DatetimeIndex(dates), dtype=float)
+    flows = pd.Series(external_flows, index=nav.index, dtype=float)
+    if len(nav) < 2:
+        return pd.Series(dtype=float)
+
+    returns = (nav - flows) / nav.shift(1) - 1.0
+    returns = returns.replace([np.inf, -np.inf], np.nan).dropna()
+    return returns[returns.index >= start_ts.normalize()]
 
 
 def _benchmark_series(
@@ -2073,6 +2271,215 @@ def _apply_weight_constraints(
     }
 
 
+def _fallback_integer_share_allocation(
+    target_weights: pd.Series,
+    prices: pd.Series,
+    *,
+    total_portfolio_value: float,
+    sector_lookup: dict[str, str],
+    sector_cap_pct: float,
+    max_position_pct: float,
+    cash_buffer_pct: float,
+) -> pd.Series:
+    target = pd.to_numeric(target_weights, errors="coerce").fillna(0.0)
+    target = target[target > 0]
+    price = pd.to_numeric(prices, errors="coerce").reindex(target.index).dropna()
+    price = price[price > 0]
+    symbols = [symbol for symbol in target.index if symbol in price.index]
+    if not symbols:
+        return pd.Series(dtype=float)
+
+    total_value = max(float(total_portfolio_value), 0.0)
+    invest_limit = total_value * max(0.0, 1.0 - min(max(float(cash_buffer_pct), 0.0), 95.0) / 100.0)
+    position_limit = total_value * max(float(max_position_pct), 0.0) / 100.0
+    sector_limit = total_value * max(float(sector_cap_pct), 0.0) / 100.0
+    target_dollars = target.reindex(symbols).fillna(0.0) * total_value
+    shares = pd.Series(0.0, index=symbols)
+    spent = 0.0
+    sector_spent: dict[str, float] = {}
+
+    def can_add(symbol: str) -> bool:
+        px = float(price.loc[symbol])
+        if spent + px > invest_limit + 1e-9:
+            return False
+        if position_limit > 0 and (shares.loc[symbol] + 1.0) * px > position_limit + 1e-9:
+            return False
+        sector = sector_lookup.get(symbol, "Unknown")
+        if sector_limit > 0 and sector_spent.get(sector, 0.0) + px > sector_limit + 1e-9:
+            return False
+        return True
+
+    for symbol in sorted(symbols, key=lambda item: float(target_dollars.get(item, 0.0)), reverse=True):
+        px = float(price.loc[symbol])
+        desired = int(np.floor(float(target_dollars.loc[symbol]) / px))
+        for _ in range(max(desired, 0)):
+            if not can_add(symbol):
+                break
+            shares.loc[symbol] += 1.0
+            spent += px
+            sector = sector_lookup.get(symbol, "Unknown")
+            sector_spent[sector] = sector_spent.get(sector, 0.0) + px
+
+    while True:
+        best_symbol = ""
+        best_gain = 0.0
+        for symbol in symbols:
+            if not can_add(symbol):
+                continue
+            px = float(price.loc[symbol])
+            before = abs(shares.loc[symbol] * px - float(target_dollars.loc[symbol]))
+            after = abs((shares.loc[symbol] + 1.0) * px - float(target_dollars.loc[symbol]))
+            gain = before - after
+            if gain > best_gain:
+                best_gain = gain
+                best_symbol = symbol
+        if not best_symbol:
+            break
+        px = float(price.loc[best_symbol])
+        shares.loc[best_symbol] += 1.0
+        spent += px
+        sector = sector_lookup.get(best_symbol, "Unknown")
+        sector_spent[sector] = sector_spent.get(sector, 0.0) + px
+
+    return shares[shares > 0].sort_values(ascending=False)
+
+
+def _optimize_integer_share_allocation(
+    base_weights: pd.Series,
+    *,
+    sector_lookup: dict[str, str],
+    price_map: dict[str, float],
+    total_portfolio_value: float,
+    sector_cap_pct: float,
+    max_position_pct: float,
+    cash_buffer_pct: float,
+) -> tuple[pd.Series, pd.Series, dict[str, float]]:
+    total_value = max(float(total_portfolio_value), 0.0)
+    if total_value <= 0:
+        return pd.Series({"CASH": 1.0}), pd.Series(dtype=float), {
+            "requested_cash_buffer_pct": float(cash_buffer_pct),
+            "actual_cash_weight_pct": 100.0,
+            "sector_cap_pct": float(sector_cap_pct),
+            "max_position_pct": float(max_position_pct),
+            "integer_optimizer": "unavailable_total_value",
+        }
+
+    continuous_weights, _ = _apply_weight_constraints(
+        base_weights,
+        sector_lookup=sector_lookup,
+        sector_cap_pct=sector_cap_pct,
+        max_position_pct=max_position_pct,
+        cash_buffer_pct=cash_buffer_pct,
+    )
+    stock_weights = continuous_weights.drop(labels=["CASH"], errors="ignore")
+    prices = pd.Series({symbol: price_map.get(str(symbol), np.nan) for symbol in stock_weights.index}, dtype=float)
+    prices = prices.replace([np.inf, -np.inf], np.nan).dropna()
+    prices = prices[prices > 0]
+    stock_weights = stock_weights.reindex(prices.index).dropna()
+    if stock_weights.empty:
+        return pd.Series({"CASH": 1.0}), pd.Series(dtype=float), {
+            "requested_cash_buffer_pct": float(cash_buffer_pct),
+            "actual_cash_weight_pct": 100.0,
+            "sector_cap_pct": float(sector_cap_pct),
+            "max_position_pct": float(max_position_pct),
+            "integer_optimizer": "no_priced_symbols",
+        }
+
+    optimizer_name = "scipy_milp"
+    try:
+        from scipy.optimize import Bounds, LinearConstraint, milp
+
+        symbols = list(stock_weights.index)
+        n = len(symbols)
+        target_dollars = stock_weights.reindex(symbols).fillna(0.0).to_numpy(dtype=float) * total_value
+        px = prices.reindex(symbols).to_numpy(dtype=float)
+        cash_target = min(max(float(cash_buffer_pct), 0.0), 95.0) / 100.0
+        invest_limit = total_value * max(0.0, 1.0 - cash_target)
+        position_limit = total_value * max(float(max_position_pct), 0.0) / 100.0
+        sector_limit = total_value * max(float(sector_cap_pct), 0.0) / 100.0
+
+        upper_q = np.full(n, np.inf, dtype=float)
+        if position_limit > 0:
+            upper_q = np.floor(position_limit / px)
+        lower = np.concatenate([np.zeros(n), np.zeros(n)])
+        upper = np.concatenate([upper_q, np.full(n, np.inf)])
+        c = np.concatenate([np.zeros(n), np.ones(n) / max(total_value, 1.0)])
+        integrality = np.concatenate([np.ones(n), np.zeros(n)])
+
+        rows: list[np.ndarray] = []
+        lbs: list[float] = []
+        ubs: list[float] = []
+
+        row = np.zeros(n * 2)
+        row[:n] = px
+        rows.append(row)
+        lbs.append(0.0)
+        ubs.append(invest_limit)
+
+        if sector_limit > 0:
+            for sector in sorted({sector_lookup.get(symbol, "Unknown") for symbol in symbols}):
+                row = np.zeros(n * 2)
+                for idx, symbol in enumerate(symbols):
+                    if sector_lookup.get(symbol, "Unknown") == sector:
+                        row[idx] = px[idx]
+                rows.append(row)
+                lbs.append(0.0)
+                ubs.append(sector_limit)
+
+        for idx in range(n):
+            row = np.zeros(n * 2)
+            row[idx] = px[idx]
+            row[n + idx] = -1.0
+            rows.append(row)
+            lbs.append(-np.inf)
+            ubs.append(float(target_dollars[idx]))
+
+            row = np.zeros(n * 2)
+            row[idx] = -px[idx]
+            row[n + idx] = -1.0
+            rows.append(row)
+            lbs.append(-np.inf)
+            ubs.append(float(-target_dollars[idx]))
+
+        constraints = LinearConstraint(np.vstack(rows), np.array(lbs), np.array(ubs))
+        result = milp(
+            c=c,
+            integrality=integrality,
+            bounds=Bounds(lower, upper),
+            constraints=constraints,
+            options={"time_limit": 8.0, "mip_rel_gap": 0.002},
+        )
+        if not result.success or result.x is None:
+            raise RuntimeError(str(getattr(result, "message", "milp failed")))
+        shares = pd.Series(np.rint(result.x[:n]).clip(min=0), index=symbols, dtype=float)
+    except Exception:
+        optimizer_name = "greedy_integer_fallback"
+        shares = _fallback_integer_share_allocation(
+            stock_weights,
+            prices,
+            total_portfolio_value=total_value,
+            sector_lookup=sector_lookup,
+            sector_cap_pct=sector_cap_pct,
+            max_position_pct=max_position_pct,
+            cash_buffer_pct=cash_buffer_pct,
+        )
+
+    shares = shares[shares > 0].sort_values(ascending=False)
+    invested = float((shares * prices.reindex(shares.index).fillna(0.0)).sum())
+    stock_value_weights = shares * prices.reindex(shares.index).fillna(0.0) / total_value
+    actual_cash = max(0.0, 1.0 - invested / total_value)
+    weights = stock_value_weights[stock_value_weights > 1e-10]
+    if actual_cash > 1e-10:
+        weights.loc["CASH"] = actual_cash
+    return weights.sort_values(ascending=False), shares, {
+        "requested_cash_buffer_pct": float(cash_buffer_pct),
+        "actual_cash_weight_pct": actual_cash * 100.0,
+        "sector_cap_pct": float(sector_cap_pct),
+        "max_position_pct": float(max_position_pct),
+        "integer_optimizer": optimizer_name,
+    }
+
+
 def _allocation_frame_from_weights(
     weights: pd.Series,
     *,
@@ -2084,10 +2491,15 @@ def _allocation_frame_from_weights(
     total_portfolio_value: float = 0.0,
     current_shares: pd.Series | None = None,
     price_map: dict[str, float] | None = None,
+    target_shares: pd.Series | None = None,
 ) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     # 최적화 대상 종목과 현재 보유 종목의 합집합 티커를 대상으로 합니다.
-    all_symbols = sorted(set(weights.index) | set(current_weights.index if current_weights is not None else []))
+    all_symbols = sorted(
+        set(weights.index)
+        | set(current_weights.index if current_weights is not None else [])
+        | set(target_shares.index if target_shares is not None else [])
+    )
 
     for symbol in all_symbols:
         weight = float(weights.get(symbol, 0.0))
@@ -2102,26 +2514,40 @@ def _allocation_frame_from_weights(
             continue
 
         trade_text = "-"
+        target_qty = np.nan
+        curr_qty = np.nan
+        diff_qty = np.nan
+        order_value = 0.0
         if is_cash and total_portfolio_value > 0:
             target_amt = (target_pct / 100.0) * total_portfolio_value
             curr_amt = (current_pct / 100.0) * total_portfolio_value
             diff_amt = target_amt - curr_amt
+            order_value = diff_amt
             if abs(diff_amt) > 1.0: # $1 이상의 유의미한 차이만 표시
                 trade_text = f"{'DEPOSIT' if diff_amt > 0 else 'WITHDRAW'} ${abs(diff_amt):,.0f}"
 
         elif not is_cash and total_portfolio_value > 0 and price_map:
             price = price_map.get(str(symbol), 0.0)
             if price > 0:
-                target_qty = int(np.floor((float(weight) * total_portfolio_value) / price))
+                if target_shares is not None:
+                    target_qty = float(target_shares.get(symbol, 0.0))
+                else:
+                    target_qty = int(np.floor((float(weight) * total_portfolio_value) / price))
                 curr_qty = float(current_shares.get(symbol, 0.0)) if current_shares is not None else 0.0
                 diff_qty = target_qty - curr_qty
-                if diff_qty != 0:
-                    trade_text = f"{'BUY' if diff_qty > 0 else 'SELL'} {abs(int(diff_qty))}"
+                order_value = diff_qty * float(price)
+                if abs(diff_qty) > 1e-9:
+                    qty_text = f"{abs(diff_qty):,.4f}".rstrip("0").rstrip(".")
+                    trade_text = f"{'BUY' if diff_qty > 0 else 'SELL'} {qty_text}"
 
         rows.append(
             {
                 "ticker": str(symbol),
                 "sector": "Cash" if is_cash else sector_lookup.get(str(symbol), "Unknown"),
+                "target_quantity": target_qty,
+                "current_quantity": curr_qty,
+                "trade_quantity": diff_qty,
+                "estimated_order_value": order_value,
                 "target_weight_pct": target_pct,
                 "current_weight_pct": current_pct,
                 "diff_weight_pct": target_pct - current_pct,
@@ -2229,8 +2655,15 @@ def build_portfolio_dashboard(
 
     # CASH 티커는 외부 데이터(yfinance) 호출에서 제외
     tickers = [t for t in positions_raw["ticker"].astype(str).tolist() if t != "CASH"]
+    chart_tickers = sorted(
+        {
+            str(t).strip().upper()
+            for t in trades["ticker"].astype(str).tolist()
+            if str(t).strip().upper() and str(t).strip().upper() != "CASH"
+        }.union(tickers)
+    )
     close_history, _, position_sources = _load_close_history(
-        tickers,
+        chart_tickers,
         start_date=start_ts.strftime("%Y-%m-%d"),
         end_date=end_ts.strftime("%Y-%m-%d"),
         shared_db=shared_db,
@@ -2248,6 +2681,12 @@ def build_portfolio_dashboard(
     holdings_performance = _build_holdings_performance(positions, calendar_close_history, selected_start_ts=start_ts)
     portfolio_daily = _portfolio_return_series(close_history, positions)
     portfolio_calendar_daily = _portfolio_return_series(calendar_close_history, positions)
+    portfolio_graph_daily = _true_portfolio_return_series(
+        trades,
+        close_history,
+        start_ts=start_ts,
+        end_ts=end_ts,
+    )
 
     sector_frame, _ = _load_component_frame(max_symbols=0)
     universe = sector_frame["Symbol"].astype(str).tolist()
@@ -2294,9 +2733,9 @@ def build_portfolio_dashboard(
     risk_summary, risk_contribution, relative_risk_summary = _build_risk_summary(
         positions,
         holding_returns,
-        portfolio_daily,
+        portfolio_graph_daily,
         benchmark_daily,
-        calendar_portfolio_daily=portfolio_calendar_daily,
+        calendar_portfolio_daily=portfolio_graph_daily,
         calendar_benchmark_daily=benchmark_calendar_daily,
     )
     active_risk_contribution = _build_active_risk_contribution(
@@ -2346,7 +2785,8 @@ def build_portfolio_dashboard(
         scoring["style_bucket"] = scoring["ticker"].map(style_map).fillna("Unknown")
 
     # 시각화 차트 생성
-    cum_chart = _build_cumulative_return_chart(portfolio_daily, benchmark_daily)
+    cum_chart = _build_cumulative_return_chart(portfolio_graph_daily, benchmark_daily)
+    weekly_chart = _build_weekly_return_chart(portfolio_graph_daily, benchmark_daily)
     sector_chart = _build_sector_contribution_chart(attribution)
     style_chart = _build_style_exposure_chart(style_exposure)
 
@@ -2369,12 +2809,12 @@ def build_portfolio_dashboard(
     portfolio_summary = _build_portfolio_summary(
         positions, 
         holdings_performance, 
-        portfolio_daily, 
+        portfolio_graph_daily,
         benchmark_daily, 
         as_of_date=as_of_date,
         start_ts=start_ts,
         end_ts=end_ts,
-        calendar_daily=portfolio_calendar_daily,
+        calendar_daily=portfolio_graph_daily,
     )
     diagnostics = {
         "portfolio_db": _portfolio_storage_label(portfolio_db, user_id=portfolio_user_id),
@@ -2403,6 +2843,7 @@ def build_portfolio_dashboard(
         style_exposure=style_exposure,
         scoring=scoring,
         cumulative_chart=cum_chart,
+        weekly_return_chart=weekly_chart,
         sector_contribution_chart=sector_chart,
         style_exposure_chart=style_chart,
         sector_allocation_chart=alloc_chart,
@@ -2743,18 +3184,21 @@ def build_portfolio_optimization(
         start_date=start_date,
         end_date=end_date,
     )
-    sector_frame, component_source = _load_component_frame(max_symbols=max(int(universe_size), 20))
-    sector_lookup = dict(zip(sector_frame["Symbol"], sector_frame["Sector"]))
-    current_symbols = set(dashboard.positions["ticker"].astype(str)) if not dashboard.positions.empty and "ticker" in dashboard.positions.columns else set()
-    missing_symbols = {
-        symbol
-        for symbol in current_symbols
-        if str(symbol).upper() != "CASH" and str(symbol) not in sector_lookup
-    }
-    if missing_symbols:
-        full_sector_frame, _ = _load_component_frame(max_symbols=0)
-        full_sector_lookup = dict(zip(full_sector_frame["Symbol"], full_sector_frame["Sector"]))
-        sector_lookup.update({symbol: full_sector_lookup[symbol] for symbol in missing_symbols if symbol in full_sector_lookup})
+    full_sector_frame, component_source = _load_component_frame(max_symbols=0)
+    db_now = _get_db_max_date(shared_db)
+    full_symbols = full_sector_frame["Symbol"].astype(str).tolist()
+    _, universe_market_caps, universe_sources = _load_close_history(
+        full_symbols,
+        start_date=(db_now - pd.Timedelta(days=14)).strftime("%Y-%m-%d"),
+        end_date=db_now.strftime("%Y-%m-%d"),
+        shared_db=shared_db,
+    )
+    sector_frame = _select_sector_cap_universe(
+        full_sector_frame,
+        universe_market_caps,
+        universe_size=max(int(universe_size), 20),
+    )
+    sector_lookup = dict(zip(full_sector_frame["Symbol"], full_sector_frame["Sector"]))
     db_now = _get_db_max_date(shared_db)
     universe = sector_frame["Symbol"].astype(str).tolist()
     if end_date:
@@ -2834,9 +3278,11 @@ def build_portfolio_optimization(
     curr_w_norm = (current_weights / 100.0).reindex(returns.columns).fillna(0.0)
     impact_curr = _calc_port_impact(curr_w_norm)
 
-    replication_weights, replication_summary = _apply_weight_constraints(
+    replication_weights, replication_shares, replication_summary = _optimize_integer_share_allocation(
         cap_weights,
         sector_lookup=sector_lookup,
+        price_map=price_map,
+        total_portfolio_value=total_val,
         sector_cap_pct=sector_cap_pct,
         max_position_pct=max_position_pct,
         cash_buffer_pct=cash_buffer_pct,
@@ -2856,14 +3302,17 @@ def build_portfolio_optimization(
         total_portfolio_value=total_val,
         current_shares=current_shares,
         price_map=price_map,
+        target_shares=replication_shares,
     )
     replication = _finalize_opt_df(replication_all)
     impact_rep = _calc_port_impact(replication_weights)
 
     aggressive_signal = np.maximum(annual_return.fillna(0.0), 0.0) * (0.6 + score_map * 0.8) / annual_vol.replace(0.0, np.nan)
-    aggressive_weights, aggressive_summary = _apply_weight_constraints(
+    aggressive_weights, aggressive_shares, aggressive_summary = _optimize_integer_share_allocation(
         _normalize_weights(aggressive_signal.replace([np.inf, -np.inf], np.nan).fillna(0.0)),
         sector_lookup=sector_lookup,
+        price_map=price_map,
+        total_portfolio_value=total_val,
         sector_cap_pct=sector_cap_pct,
         max_position_pct=max_position_pct,
         cash_buffer_pct=cash_buffer_pct,
@@ -2878,14 +3327,17 @@ def build_portfolio_optimization(
         total_portfolio_value=total_val,
         current_shares=current_shares,
         price_map=price_map,
+        target_shares=aggressive_shares,
     )
     aggressive = _finalize_opt_df(aggressive_all)
     impact_agg = _calc_port_impact(aggressive_weights)
 
     defensive_signal = (score_map + 0.35) / annual_vol.replace(0.0, np.nan)
-    defensive_weights, defensive_summary = _apply_weight_constraints(
+    defensive_weights, defensive_shares, defensive_summary = _optimize_integer_share_allocation(
         _normalize_weights(defensive_signal.replace([np.inf, -np.inf], np.nan).fillna(0.0)),
         sector_lookup=sector_lookup,
+        price_map=price_map,
+        total_portfolio_value=total_val,
         sector_cap_pct=sector_cap_pct,
         max_position_pct=max_position_pct,
         cash_buffer_pct=cash_buffer_pct,
@@ -2900,6 +3352,7 @@ def build_portfolio_optimization(
         total_portfolio_value=total_val,
         current_shares=current_shares,
         price_map=price_map,
+        target_shares=defensive_shares,
     )
     defensive = _finalize_opt_df(defensive_all)
     impact_def = _calc_port_impact(defensive_weights)
@@ -2917,9 +3370,16 @@ def build_portfolio_optimization(
         [
             {"metric": "component_source", "value": component_source},
             {"metric": "price_source", "value": sources.get("price_source", "sqlite")},
+            {"metric": "universe_selection", "value": "sector_market_cap_top"},
+            {"metric": "universe_market_cap_source", "value": universe_sources.get("market_cap_source", "sqlite")},
+            {"metric": "requested_universe_size", "value": str(max(int(universe_size), 20))},
             {"metric": "financial_metric_source", "value": financial_source},
             {"metric": "current_portfolio_holdings", "value": str(len(dashboard.positions.index))},
             {"metric": "optimization_universe", "value": str(len(returns.columns))},
+            {"metric": "optimization_unit", "value": "integer_shares"},
+            {"metric": "replication_integer_optimizer", "value": str(replication_summary.get("integer_optimizer", ""))},
+            {"metric": "aggressive_integer_optimizer", "value": str(aggressive_summary.get("integer_optimizer", ""))},
+            {"metric": "defensive_integer_optimizer", "value": str(defensive_summary.get("integer_optimizer", ""))},
             {"metric": "sector_cap_pct", "value": f"{sector_cap_pct:.2f}"},
             {"metric": "max_position_pct", "value": f"{max_position_pct:.2f}"},
             {"metric": "requested_cash_buffer_pct", "value": f"{cash_buffer_pct:.2f}"},

@@ -676,6 +676,10 @@ def _attribution_page(ctx: _PageContext) -> str:
     if dashboard and dashboard.cumulative_chart:
         chart_cum_html = f'<img src="data:image/png;base64,{dashboard.cumulative_chart}" class="chart-img" alt="Cumulative Return Chart" />'
 
+    chart_weekly_html = "<p class='hint'>차트 데이터를 불러올 수 없습니다.</p>"
+    if dashboard and dashboard.weekly_return_chart:
+        chart_weekly_html = f'<img src="data:image/png;base64,{dashboard.weekly_return_chart}" class="chart-img" alt="Weekly Return Chart" />'
+
     chart_sec_html = "<p class='hint'>차트 데이터를 불러올 수 없습니다.</p>"
     if dashboard and dashboard.sector_contribution_chart:
         chart_sec_html = f'<img src="data:image/png;base64,{dashboard.sector_contribution_chart}" class="chart-img" alt="Sector Contribution Chart" />'
@@ -687,9 +691,15 @@ def _attribution_page(ctx: _PageContext) -> str:
     body = f"""
     {_message_block(ctx)}
     {_date_range_form("attribution", ctx)}
-    <div class="card" style="margin-bottom: 12px;">
+    <div class="grid-2" style="margin-bottom: 12px;">
+      <div class="card">
       <h3 style="margin-top:0;">누적 수익률 추이 (vs S&P 500)</h3>
-      {f'<img src="data:image/png;base64,{dashboard.cumulative_chart}" class="chart-img" alt="Cumulative Return Chart" />' if dashboard and dashboard.cumulative_chart else "<p class='hint'>차트 데이터를 불러올 수 없습니다.</p>"}
+      {chart_cum_html}
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0;">주간 수익률 (Portfolio vs S&P 500)</h3>
+        {chart_weekly_html}
+      </div>
     </div>
     <div class="grid-2" style="margin-bottom: 12px;">
        <div class="card">
@@ -1627,6 +1637,10 @@ def _render_strategy_impact(impact_df: pd.DataFrame | None, strategy_col: str) -
 def _format_opt_df(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty: return df
     rename_map = {
+        "target_quantity": "목표 주식수",
+        "current_quantity": "현재 주식수",
+        "trade_quantity": "거래 주식수",
+        "estimated_order_value": "주문금액($)",
         "ticker": "티커",
         "sector": "섹터",
         "target_weight_pct": "제안(%)",
@@ -1637,11 +1651,29 @@ def _format_opt_df(df: pd.DataFrame) -> pd.DataFrame:
         "volatility_pct": "변동성(연 %)",
         "integrated_score": "점수"
     }
-    cols = ["ticker", "sector", "target_weight_pct", "current_weight_pct", "diff_weight_pct", "suggested_trade", "expected_return_pct", "volatility_pct", "integrated_score"]
+    cols = [
+        "ticker",
+        "sector",
+        "target_quantity",
+        "current_quantity",
+        "trade_quantity",
+        "estimated_order_value",
+        "suggested_trade",
+        "target_weight_pct",
+        "current_weight_pct",
+        "diff_weight_pct",
+        "expected_return_pct",
+        "volatility_pct",
+        "integrated_score",
+    ]
     out = df[[c for c in cols if c in df.columns]].copy() # Ensure columns exist before selecting
     for c in out.columns:
         if c == "diff_weight_pct":
             out[c] = out[c].map(lambda x: f"{x:+.1f}" if pd.notna(x) else "-")
+        elif c in ["target_quantity", "current_quantity", "trade_quantity"]:
+            out[c] = out[c].map(lambda x: f"{x:,.4f}".rstrip("0").rstrip(".") if pd.notna(x) else "-")
+        elif c == "estimated_order_value":
+            out[c] = out[c].map(lambda x: f"{x:+,.0f}" if pd.notna(x) and abs(float(x)) >= 0.5 else "-")
         elif c in ["target_weight_pct", "current_weight_pct", "expected_return_pct", "volatility_pct"]:
             out[c] = out[c].map(lambda x: f"{x:.1f}" if pd.notna(x) else "-")
         elif c == "integrated_score":

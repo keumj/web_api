@@ -38,6 +38,7 @@ _DASHBOARD_OPTIONAL_FRAME_FIELDS = [
 ]
 _DASHBOARD_CHART_FIELDS = [
     "cumulative_chart",
+    "weekly_return_chart",
     "sector_contribution_chart",
     "style_exposure_chart",
     "sector_allocation_chart",
@@ -173,6 +174,7 @@ def load_dashboard_snapshot(user_id: str) -> SnapshotEnvelope | None:
         scoring=_deserialize_frame(frames.get("scoring")),
         diagnostics={str(k): str(v) for k, v in dict(body.get("diagnostics", {})).items()},
         cumulative_chart=charts.get("cumulative_chart"),
+        weekly_return_chart=charts.get("weekly_return_chart"),
         sector_contribution_chart=charts.get("sector_contribution_chart"),
         style_exposure_chart=charts.get("style_exposure_chart"),
         sector_allocation_chart=charts.get("sector_allocation_chart"),
