@@ -40,6 +40,25 @@ def _remove_refresh_links(soup: BeautifulSoup) -> None:
             link.decompose()
 
 
+def _place_portfolio_description_before_nav(soup: BeautifulSoup) -> None:
+    wrap = soup.select_one(".wrap")
+    if wrap is None:
+        return
+    subtitle = next((child for child in wrap.find_all("div", class_="sub", recursive=False)), None)
+    nav = next(
+        (
+            child
+            for child in wrap.find_all("div", class_="nav", recursive=False)
+            if not child.has_attr("style")
+        ),
+        None,
+    )
+    if subtitle is None or nav is None:
+        return
+    if subtitle.find_previous_sibling(class_="nav") is not None:
+        nav.insert_before(subtitle.extract())
+
+
 @dataclass
 class PortfolioRange:
     lookback_days: int
@@ -76,6 +95,7 @@ def _prepare_portfolio_html(page: str, html: str, *, user: AuthUser | None = Non
     if soup is None:
         soup = BeautifulSoup(html, "html.parser")
     _remove_refresh_links(soup)
+    _place_portfolio_description_before_nav(soup)
     if soup is not None:
         html = str(soup)
     if page not in HISTORICAL_PAGES:

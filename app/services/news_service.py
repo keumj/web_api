@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import traceback
 from dataclasses import dataclass, field
 
@@ -33,7 +34,13 @@ class NewsPageState:
     error: str | None = None
 
 
-states: dict[str, NewsPageState] = {key: NewsPageState() for key in news_web.PAGE_TO_SECTIONS}
+_states: dict[str, dict[str, NewsPageState]] = {}
+_states_lock = threading.RLock()
+
+
+def _session_states(session_key: str) -> dict[str, NewsPageState]:
+    with _states_lock:
+        return _states.setdefault(session_key, {key: NewsPageState() for key in news_web.PAGE_TO_SECTIONS})
 
 
 PAGE_ALIASES = {
@@ -59,9 +66,9 @@ def _render_func(page_key: str):
     }[page_key]
 
 
-def render(page: str) -> str:
+def render(page: str, *, session_key: str = "global") -> str:
     page_key = PAGE_ALIASES.get(page, "overview")
-    state = states[page_key]
+    state = _session_states(session_key)[page_key]
     ctx = news_web._PageContext(
         dashboard=state.dashboard,
         form=state.form,
@@ -71,9 +78,9 @@ def render(page: str) -> str:
     return inject_busy_cursor_overlay(add_start_page_link(html))
 
 
-def run(page: str, form: dict[str, str]) -> str:
+def run(page: str, form: dict[str, str], *, session_key: str = "global") -> str:
     page_key = PAGE_ALIASES.get(page, "overview")
-    state = states[page_key]
+    state = _session_states(session_key)[page_key]
     page_form = news_web._default_form()
     page_form.update({key: str(value).strip() for key, value in form.items()})
     page_form["ticker"] = page_form.get("ticker", "").strip().upper()

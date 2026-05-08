@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import threading
 import traceback
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -108,17 +109,24 @@ class StockState:
     wfv_error: str | None = None
 
 
-state = StockState()
+_states: dict[str, StockState] = {}
+_states_lock = threading.RLock()
+
+
+def _state(session_key: str) -> StockState:
+    with _states_lock:
+        return _states.setdefault(session_key, StockState())
 
 
 def _clean_stock_html(html: str) -> str:
     return inject_busy_cursor_overlay(add_start_page_link(rewrite_links(html, STOCK_REWRITES)))
 
 
-def render(page: str, ticker: str | None = None, intent: str | None = None) -> str:
+def render(page: str, ticker: str | None = None, intent: str | None = None, *, session_key: str = "global") -> str:
+    state = _state(session_key)
     selected_ticker = _clean_ticker(ticker or "")
     if selected_ticker:
-        _sync_ticker(selected_ticker)
+        _sync_ticker(state, selected_ticker)
 
     if page == "forecast":
         html = stock_web._html_page(
@@ -186,7 +194,7 @@ def _clean_ticker(value: str) -> str:
     return re.sub(r"[^A-Z0-9.\-]", "", raw)
 
 
-def _sync_ticker(ticker: str) -> None:
+def _sync_ticker(state: StockState, ticker: str) -> None:
     if not ticker:
         return
     for form in [
@@ -202,7 +210,7 @@ def _sync_ticker(ticker: str) -> None:
         form["ticker"] = ticker
 
 
-def _matching_financials_ctx(ticker: str) -> object | None:
+def _matching_financials_ctx(state: StockState, ticker: str) -> object | None:
     fin_ctx = state.financials_ctx
     if fin_ctx is None:
         return None
@@ -210,10 +218,11 @@ def _matching_financials_ctx(ticker: str) -> object | None:
     return fin_ctx if fin_ticker == ticker else None
 
 
-def run(action: str, form: dict[str, str]) -> str:
+def run(action: str, form: dict[str, str], *, session_key: str = "global") -> str:
+    state = _state(session_key)
     try:
         ticker = _clean_ticker(form.get("ticker", ""))
-        _sync_ticker(ticker)
+        _sync_ticker(state, ticker)
         if action == "forecast":
             for checkbox in ["use_sample", "auto_save", "insecure_ssl"]:
                 form.setdefault(checkbox, "")
@@ -267,7 +276,7 @@ def run(action: str, form: dict[str, str]) -> str:
                 state.decision_form,
                 returns_ctx=state.returns_ctx,
                 risk_ctx=state.risk_ctx,
-                fin_ctx=_matching_financials_ctx(ticker),
+                fin_ctx=_matching_financials_ctx(state, ticker),
             )
             state.decision_error = None
             return "decision"

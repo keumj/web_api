@@ -482,8 +482,8 @@ def _layout(title: str, subtitle: str, active: str, ctx: _PageContext, body: str
     <body>
       <div class="wrap">
         {_page_head("Portfolio Lab | S&P 500")}
-        {nav_html}
         <div class="sub">{html.escape(subtitle)}</div>
+        {nav_html}
         {body}
         {metadata_footer}
       </div>
