@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from app.settings import settings
+from pipeline_common.shared_sp500_prices_sql import shared_prices_sqlite_path
+from pipeline_macro.macro_data_store import DEFAULT_MACRO_DB_PATH
 
 
 STATE_RELATIVE_PATH = Path("outputs") / "refresh_state.json"
@@ -64,6 +66,17 @@ def _format_mtime(path: Path) -> str | None:
         return None
 
 
+def _resolve_root_path(root: Path, path: Path) -> Path:
+    return path if path.is_absolute() else root / path
+
+
+def _display_project_path(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(settings.project_root.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
 def _sqlite_fetchone(path: Path, query: str) -> tuple[Any, ...] | None:
     if not path.exists():
         return None
@@ -108,8 +121,8 @@ def collect_git_status(root: Path | None = None) -> dict[str, Any]:
 
 def collect_data_status(root: Path | None = None) -> dict[str, Any]:
     root_dir = root or settings.project_root
-    shared_sqlite = root_dir / "data" / "sp500_shared_db" / "sp500_shared_prices.sqlite"
-    macro_sqlite = root_dir / "data" / "macro_prices.sqlite"
+    shared_sqlite = _resolve_root_path(root_dir, shared_prices_sqlite_path(root_dir / "data" / "sp500_shared_db"))
+    macro_sqlite = _resolve_root_path(root_dir, DEFAULT_MACRO_DB_PATH)
 
     prices = _sqlite_fetchone(shared_sqlite, "SELECT MAX(date), COUNT(*), COUNT(DISTINCT symbol) FROM prices")
     quarterly = _sqlite_fetchone(
@@ -121,13 +134,13 @@ def collect_data_status(root: Path | None = None) -> dict[str, Any]:
 
     return {
         "shared_sqlite": {
-            "path": "data/sp500_shared_db/sp500_shared_prices.sqlite",
+            "path": _display_project_path(shared_sqlite),
             "exists": shared_sqlite.exists(),
             "size_bytes": shared_sqlite.stat().st_size if shared_sqlite.exists() else 0,
             "modified_at": _format_mtime(shared_sqlite),
         },
         "macro_sqlite": {
-            "path": "data/macro_prices.sqlite",
+            "path": _display_project_path(macro_sqlite),
             "exists": macro_sqlite.exists(),
             "size_bytes": macro_sqlite.stat().st_size if macro_sqlite.exists() else 0,
             "modified_at": _format_mtime(macro_sqlite),
