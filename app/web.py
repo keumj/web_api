@@ -132,6 +132,38 @@ def inject_busy_cursor_overlay(page: str) -> str:
         return false;
       };
 
+      const isPageNavigationLink = (event, link) => {
+        if (!(link instanceof HTMLAnchorElement)) return false;
+        if (event.defaultPrevented) return false;
+        if (event.button !== 0) return false;
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return false;
+        if (link.dataset.noBusyCursor === "true") return false;
+        if (link.hasAttribute("download")) return false;
+
+        const target = (link.getAttribute("target") || "").trim().toLowerCase();
+        if (target && target !== "_self") return false;
+
+        const rawHref = (link.getAttribute("href") || "").trim();
+        if (!rawHref || rawHref.startsWith("#")) return false;
+        if (/^(javascript|mailto|tel):/i.test(rawHref)) return false;
+
+        let url;
+        try {
+          url = new URL(rawHref, window.location.href);
+        } catch (err) {
+          return false;
+        }
+        if (url.origin !== window.location.origin) return false;
+        if (
+          url.pathname === window.location.pathname &&
+          url.search === window.location.search &&
+          url.hash
+        ) {
+          return false;
+        }
+        return true;
+      };
+
       const resolveLabel = (form, submitter) => {
         return "실행중...";
       };
@@ -167,6 +199,13 @@ def inject_busy_cursor_overlay(page: str) -> str:
           trackedButtons.set(target.form || document.body, target);
         }
       }, true);
+
+      document.addEventListener("click", (event) => {
+        const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+        if (isPageNavigationLink(event, link)) {
+          activate(resolveLabel(null, null));
+        }
+      });
 
       document.addEventListener("submit", (event) => {
         const form = event.target;

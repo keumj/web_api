@@ -256,7 +256,7 @@ def _hero(dashboard: MacroDashboard, description: str) -> str:
     <div class="macro-hero">
       <div>
         <h1>Macro Analysis | S&P 500</h1>
-        <p><strong>기준일 {html.escape(dashboard.as_of_date)}</strong> | {html.escape(description)}</p>
+        <p>{html.escape(description)}</p>
       </div>
       <div class="macro-metrics">
         <div><span>리스크</span><strong>{html.escape(dashboard.risk_level)}</strong></div>
@@ -469,7 +469,7 @@ def render_body(page: str, *, start_date: str | None = None, lookback_days: int 
       .macro-nav a {{ text-decoration:none; color:var(--brand); border:1px solid var(--line); background:#fff; border-radius:999px; padding:7px 12px; font-size:13px; }}
       .macro-nav a.active {{ background:var(--brand); color:#fff; border-color:var(--brand); }}
       .service-main > .macro-nav:first-of-type {{ display:none; }}
-      .macro-hero {{ display:flex; justify-content:space-between; gap:16px; align-items:flex-start; background:none; border:none; border-radius:8px; padding:18px; margin-bottom:12px; }}
+      .macro-hero {{ display:flex; justify-content:space-between; gap:16px; align-items:flex-start; background:none; border:none; border-radius:8px; padding:18px 18px 8px; margin-bottom:4px; }}
       .macro-hero h1 {{ margin:4px 0 8px; font-size:26px; letter-spacing:0; }}
       .macro-hero p {{ margin:0; color:var(--muted); line-height:1.5; }}
       .macro-metrics {{ display:grid; grid-template-columns:repeat(2, minmax(120px, 1fr)); gap:8px; min-width:280px; }}
