@@ -25,6 +25,7 @@ from .macro_data_store import (
     LOCAL_ONLY_SPECS,
     MacroSeriesSpec,
     ensure_macro_schema,
+    fred_api_key,
     macro_db_path,
     normalize_series,
     read_local_series,
@@ -173,7 +174,7 @@ def refresh_macro_prices(
     start = _start_date(years)
     target = macro_db_path(db_path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    fred_key = str(os.getenv("FRED_API_KEY", "")).strip()
+    fred_key = fred_api_key()
     fred = Fred(api_key=fred_key) if Fred is not None and fred_key else None
     if require_fred and fred is None:
         raise RuntimeError("fredapi is not installed; cannot refresh required FRED macro series")

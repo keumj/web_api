@@ -18,8 +18,14 @@ from pipeline_common.shared_sp500_prices_sql import (
     load_shared_market_caps_for_symbols,
     shared_prices_sqlite_path,
 )
+from pipeline_macro.macro_data_store import fred_api_key, read_macro_series
 from pipeline_stock_news.analysis import heuristic_title_sentiment
 from app.services import db_service
+
+try:
+    from fredapi import Fred
+except Exception:  # pragma: no cover - optional dependency
+    Fred = None
 
 import matplotlib
 matplotlib.use("Agg")
@@ -605,6 +611,46 @@ def _load_close_history(
         "price_source": close_source or "sqlite",
         "market_cap_source": caps_source or "sqlite",
     }
+
+
+def _load_sp500_index_returns(
+    *,
+    start_date: str | pd.Timestamp,
+    end_date: str | pd.Timestamp | None = None,
+) -> tuple[pd.Series, str]:
+    start_ts = pd.Timestamp(start_date).normalize()
+    end_ts = pd.Timestamp(end_date).normalize() if end_date is not None else None
+
+    series, source = read_macro_series("SP500", start_date=start_ts)
+    if series is None or series.empty:
+        series = pd.Series(dtype=float, name="SP500")
+        source = None
+
+    if series.empty and Fred is not None:
+        key = fred_api_key()
+        if key:
+            try:
+                raw = Fred(api_key=key).get_series("SP500", observation_start=start_ts.strftime("%Y-%m-%d"))
+                series = pd.Series(raw, name="SP500")
+                series.index = pd.to_datetime(series.index, errors="coerce")
+                series = pd.to_numeric(series, errors="coerce").dropna().sort_index()
+                series.index = series.index.normalize()
+                series = series[~series.index.duplicated(keep="last")]
+                source = "fred:SP500"
+            except Exception:
+                series = pd.Series(dtype=float, name="SP500")
+                source = None
+
+    if series.empty:
+        return pd.Series(dtype=float), "not_available"
+    series = pd.to_numeric(series, errors="coerce").dropna().sort_index()
+    series.index = pd.to_datetime(series.index, errors="coerce").normalize()
+    series = series[~series.index.isna()]
+    series = series[series.index >= start_ts]
+    if end_ts is not None:
+        series = series[series.index <= end_ts]
+    returns = series.pct_change(fill_method=None).dropna().rename("S&P500")
+    return returns, source or "macro_sqlite"
 
 
 def _current_positions_from_trades(
@@ -2716,6 +2762,22 @@ def build_portfolio_dashboard(
         market_caps=benchmark_calendar_caps,
         sector_frame=sector_frame,
     )
+    benchmark_return_daily, benchmark_return_source = _load_sp500_index_returns(
+        start_date=start_ts,
+        end_date=end_ts,
+    )
+    benchmark_calendar_return_daily, benchmark_calendar_return_source = _load_sp500_index_returns(
+        start_date=calendar_price_start_ts,
+        end_date=end_ts,
+    )
+    if not benchmark_return_daily.empty:
+        benchmark_daily = benchmark_return_daily
+    else:
+        benchmark_return_source = benchmark_sources.get("price_source", "sqlite")
+    if not benchmark_calendar_return_daily.empty:
+        benchmark_calendar_daily = benchmark_calendar_return_daily
+    else:
+        benchmark_calendar_return_source = benchmark_sources.get("price_source", "sqlite")
     style_map, _, style_source = _build_style_map(universe, shared_db=shared_db, as_of_date=end_ts)
     positions["style_bucket"] = positions["ticker"].map(style_map).fillna("Unknown")
     positions.loc[positions["ticker"].astype(str).eq("CASH"), "style_bucket"] = "Cash"
@@ -2821,7 +2883,9 @@ def build_portfolio_dashboard(
         "shared_db": str(_shared_db_path(shared_db).resolve()),
         "component_source": component_source,
         "price_source": position_sources.get("price_source", "sqlite"),
-        "benchmark_price_source": benchmark_sources.get("price_source", "sqlite"),
+        "benchmark_price_source": benchmark_return_source,
+        "benchmark_calendar_price_source": benchmark_calendar_return_source,
+        "benchmark_weight_source": benchmark_sources.get("market_cap_source", "sqlite"),
         "financial_metric_source": financial_source,
         "style_source": style_source,
         "cash_warning": cash_warning,
@@ -3061,6 +3125,22 @@ def analyze_virtual_trades(
         market_caps=benchmark_calendar_caps,
         sector_frame=sector_frame,
     )
+    benchmark_return_daily, benchmark_return_source = _load_sp500_index_returns(
+        start_date=start_ts,
+        end_date=end_ts,
+    )
+    benchmark_calendar_return_daily, benchmark_calendar_return_source = _load_sp500_index_returns(
+        start_date=calendar_price_start_ts,
+        end_date=end_ts,
+    )
+    if not benchmark_return_daily.empty:
+        benchmark_daily = benchmark_return_daily
+    else:
+        benchmark_return_source = "sqlite"
+    if not benchmark_calendar_return_daily.empty:
+        benchmark_calendar_daily = benchmark_calendar_return_daily
+    else:
+        benchmark_calendar_return_source = "sqlite"
     after_summary = _build_portfolio_summary(
         positions_after,
         holdings_after,
@@ -3115,6 +3195,8 @@ def analyze_virtual_trades(
     diagnostics = {
         "component_source": component_source,
         "price_source": sources.get("price_source", "sqlite"),
+        "benchmark_price_source": benchmark_return_source,
+        "benchmark_calendar_price_source": benchmark_calendar_return_source,
         "cash_warning": cash_warning,
         "trade_count": str(len(normalized_requests)),
     }

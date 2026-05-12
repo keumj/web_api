@@ -26,6 +26,7 @@ TREASURY_SERIES_IDS = ["DGS1MO", "DGS3MO", "DGS6MO", "DGS1", "DGS2", "DGS3", "DG
 
 FRED_SPECS: list[MacroSeriesSpec] = [
     *[MacroSeriesSpec(series_id=sid, dataset="treasury", frequency="daily", fred_id=sid, local_csv="data/treasury_yields.csv") for sid in TREASURY_SERIES_IDS],
+    MacroSeriesSpec("SP500", "market", "daily", "SP500"),
     MacroSeriesSpec("VIX", "risk", "daily", "VIXCLS"),
     MacroSeriesSpec("IG_OAS", "credit", "daily", "BAMLC0A0CM"),
     MacroSeriesSpec("HY_OAS", "credit", "daily", "BAMLH0A0HYM2"),
@@ -53,6 +54,22 @@ ALL_SPECS = [*FRED_SPECS, *LOCAL_ONLY_SPECS]
 
 def macro_db_path(path: str | os.PathLike[str] | None = None) -> Path:
     return Path(path) if path else DEFAULT_MACRO_DB_PATH
+
+
+def fred_api_key() -> str:
+    key = str(os.getenv("FRED_API_KEY", "")).strip()
+    if key:
+        return key
+    if os.name != "nt":
+        return ""
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as reg_key:
+            value, _ = winreg.QueryValueEx(reg_key, "FRED_API_KEY")
+    except Exception:
+        return ""
+    return str(value).strip()
 
 
 def ensure_macro_schema(conn: sqlite3.Connection) -> None:

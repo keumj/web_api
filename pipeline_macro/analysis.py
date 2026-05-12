@@ -14,7 +14,7 @@ from pipeline_common.notebook_data import (
     make_gbm_series,
 )
 
-from .macro_data_store import read_macro_frame, read_macro_series
+from .macro_data_store import fred_api_key, read_macro_frame, read_macro_series
 
 try:
     from fredapi import Fred
@@ -212,17 +212,6 @@ def _percentile_rank(series: pd.Series, window: int = 504) -> float:
     return float((clean <= latest).mean() * 100.0)
 
 
-def _cap_weighted_series(prices: pd.DataFrame, symbols: list[str]) -> pd.Series:
-    frame = prices.reindex(columns=symbols).apply(pd.to_numeric, errors="coerce").dropna(how="all")
-    if frame.empty:
-        return pd.Series(dtype=float, name="S&P 500")
-    daily = frame.pct_change(fill_method=None)
-    market_daily = daily.mean(axis=1, skipna=True).dropna()
-    if market_daily.empty:
-        return pd.Series(dtype=float, name="S&P 500")
-    return (1.0 + market_daily).cumprod().rename("S&P 500")
-
-
 def _read_local_series(path: Path, name: str, start: str) -> pd.Series | None:
     if not path.is_file():
         return None
@@ -330,7 +319,7 @@ def _load_fred_or_local_series(
             return series.rename(name), f"local_csv:{raw_path}"
     if Fred is not None:
         try:
-            fred = Fred(api_key=os.getenv("FRED_API_KEY"))
+            fred = Fred(api_key=fred_api_key())
             raw = fred.get_series(fred_id, observation_start=start)
             series = pd.Series(raw).dropna().astype(float)
             series.index = pd.to_datetime(series.index).normalize()
@@ -596,7 +585,7 @@ def _risk_breadth_table(prices: pd.DataFrame, spx: pd.Series) -> pd.DataFrame:
         {
             "진단": "하락일 동반 하락률",
             "현재": downside_participation,
-            "해석": "S&P 500 proxy가 하락한 날에 같이 하락한 종목 비율입니다. 높으면 매도 압력이 시장 전반으로 퍼진다는 뜻이라 손실 확대와 상관관계 상승에 대비합니다.",
+            "해석": "S&P 500 지수가 하락한 날에 같이 하락한 종목 비율입니다. 높으면 매도 압력이 시장 전반으로 퍼진다는 뜻이라 손실 확대와 상관관계 상승에 대비합니다.",
         },
     ]
     return pd.DataFrame(rows)
@@ -882,11 +871,23 @@ def build_macro_dashboard(
         yields, yield_source = load_yield_curve_df(yield_ids, start=start)
     yields = yields.tail(tail_n).copy()
 
+    spx, price_source = _load_fred_or_local_series(
+        "S&P 500",
+        fred_id="SP500",
+        env_name="SP500_CSV_PATH",
+        filenames=["data/sp500.csv", "data/SP500.csv"],
+        start=start,
+        fallback_base=4500.0,
+        fallback_mean=4500.0,
+        fallback_speed=0.01,
+        fallback_vol=45.0,
+        seed=101,
+    )
+    spx = spx.tail(tail_n).copy()
     components, components_source = load_sp500_components(max_symbols=120)
     symbols = components["Symbol"].astype(str).head(120).tolist()
-    prices, price_source = fetch_sp500_close_prices(symbols, start)
+    prices, breadth_price_source = fetch_sp500_close_prices(symbols, start)
     prices = prices.tail(tail_n).copy()
-    spx = _cap_weighted_series(prices, symbols)
 
     dxy, dxy_source = _load_local_or_fallback(
         "DXY",
@@ -1163,7 +1164,7 @@ def build_macro_dashboard(
     curve_5y_2y = (dgs5 - dgs2).dropna().rename("5Y-2Y")
     curve_30y_10y = (dgs30 - dgs10).dropna().rename("30Y-10Y")
 
-    latest_dates = [idx.max() for idx in [yields.index, prices.index, dxy.index, vix.index, ig_oas.index, hy_oas.index, spx.index, commodity_series.index] if len(idx) > 0]
+    latest_dates = [idx.max() for idx in [yields.index, spx.index, dxy.index, vix.index, ig_oas.index, hy_oas.index, commodity_series.index] if len(idx) > 0]
     as_of = max(latest_dates).strftime("%Y-%m-%d") if latest_dates else "-"
 
     risk_return_20d = _return_pct(spx, 20)
@@ -1286,7 +1287,7 @@ def build_macro_dashboard(
     )
     risk_assets = pd.DataFrame(
         [
-            {"자산": "S&P 500 Proxy", "20D 수익률": risk_return_20d, "60D 수익률": risk_return_60d, "20D 연율 변동성": realized_vol_20d, "현재 낙폭": _latest_value(drawdown), "판독": "주식 위험선호의 핵심 온도계입니다. 수익률이 플러스이고 변동성과 낙폭이 낮으면 위험자산 확대 여지가 커지고, 반대 조합이면 방어적 해석을 우선합니다."},
+            {"자산": "S&P 500", "20D 수익률": risk_return_20d, "60D 수익률": risk_return_60d, "20D 연율 변동성": realized_vol_20d, "현재 낙폭": _latest_value(drawdown), "판독": "주식 위험선호의 핵심 온도계입니다. 수익률이 플러스이고 변동성과 낙폭이 낮으면 위험자산 확대 여지가 커지고, 반대 조합이면 방어적 해석을 우선합니다."},
             {"자산": "DXY", "20D 수익률": _return_pct(dxy, 20), "60D 수익률": _return_pct(dxy, 60), "20D 연율 변동성": float(dxy.pct_change(fill_method=None).dropna().tail(20).std(ddof=1) * np.sqrt(252) * 100.0), "현재 낙폭": _latest_value((dxy / dxy.cummax() - 1.0) * 100.0), "판독": "달러는 위험자산의 반대편 유동성 지표로 씁니다. 달러가 강하고 변동성도 높으면 글로벌 자금이 안전자산 쪽으로 이동하는 신호일 수 있습니다."},
         ]
     )
@@ -1319,8 +1320,8 @@ def build_macro_dashboard(
     sector_attribution = _sector_attribution_table(growth_score, inflation_score, policy_score, risk_score)
     sources = pd.DataFrame(
         [
-            {"데이터": "S&P 500 구성", "출처": components_source},
-            {"데이터": "S&P 500 가격", "출처": price_source},
+            {"데이터": "S&P 500 지수", "출처": price_source},
+            {"데이터": "S&P 500 구성/내부 폭", "출처": f"{components_source}; {breadth_price_source}"},
             {"데이터": "미국 금리", "출처": yield_source},
             {"데이터": "DXY", "출처": dxy_source},
             {"데이터": "VIX", "출처": vix_source},
