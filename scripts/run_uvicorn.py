@@ -13,11 +13,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-def _env_int(name: str, default: int) -> int:
-    raw = os.getenv(name)
-    if raw is None or not raw.strip():
-        return default
-    return int(raw.strip())
+def _env_int(default: int, *names: str) -> int:
+    for name in names:
+        raw = os.getenv(name)
+        if raw is not None and raw.strip():
+            return int(raw.strip())
+    return default
 
 
 def _ssl_arg(name: str) -> str | None:
@@ -34,10 +35,10 @@ def main() -> None:
     uvicorn.run(
         "app.main:app",
         host=os.getenv("KEUMJM_HOST", "0.0.0.0"),
-        port=_env_int("KEUMJM_PORT", 8515),
+        port=_env_int(8515, "PORT", "KEUMJM_PORT"),
         ssl_certfile=ssl_certfile,
         ssl_keyfile=ssl_keyfile,
-        timeout_keep_alive=_env_int("KEUMJM_UVICORN_KEEP_ALIVE", 30),
+        timeout_keep_alive=_env_int(30, "KEUMJM_UVICORN_KEEP_ALIVE"),
         log_level=os.getenv("KEUMJM_UVICORN_LOG_LEVEL", "warning"),
         access_log=False,
         loop="asyncio",
