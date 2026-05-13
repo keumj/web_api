@@ -809,16 +809,29 @@ def _upsert_macro_rows(conn, spec: MacroSeriesSpec, rows: list[tuple[object, ...
     return len(rows)
 
 
-def refresh_macro_direct(*, default_years: int) -> int:
+def _parse_series_ids(value: str) -> set[str]:
+    return {part.strip().upper() for part in str(value or "").split(",") if part.strip()}
+
+
+def refresh_macro_direct(*, default_years: int, rewrite_series: set[str] | None = None) -> int:
     if not macro_database_url():
         raise RuntimeError("KEUMJ_MACRO_DATABASE_URL must be set for direct Turso refresh.")
     fred = _fred_client()
+    rewrite_ids = {item.upper() for item in rewrite_series or set()}
     total = 0
     with _connect_macro_read_db() as conn:
         _ensure_remote_macro_schema(conn)
         for spec in ALL_SPECS:
-            old_max = _table_max_date(conn, "macro_series", where_sql="series_id = ?", params=(spec.series_id,))
-            if old_max:
+            series_id = str(spec.series_id).upper()
+            rewrite = series_id in rewrite_ids
+            old_max = None if rewrite else _table_max_date(conn, "macro_series", where_sql="series_id = ?", params=(spec.series_id,))
+            if rewrite:
+                start = (pd.Timestamp.today().normalize() - pd.DateOffset(years=int(default_years))).normalize()
+                conn.execute("DELETE FROM macro_series WHERE series_id = ?", (spec.series_id,))
+                conn.execute("DELETE FROM macro_metadata WHERE series_id = ?", (spec.series_id,))
+                conn.commit()
+                _log(f"macro {spec.series_id}: rewriting full {int(default_years)}y window from {start.strftime('%Y-%m-%d')}")
+            elif old_max:
                 start = pd.Timestamp(old_max).normalize() + pd.Timedelta(days=1)
             else:
                 start = (pd.Timestamp.today().normalize() - pd.DateOffset(years=int(default_years))).normalize()
@@ -832,6 +845,9 @@ def refresh_macro_direct(*, default_years: int) -> int:
             count = _upsert_macro_rows(conn, spec, rows, source)
             total += count
             _log(f"macro {spec.series_id}: candidate rows={count} source={source}")
+    missing_rewrite_ids = rewrite_ids.difference({str(spec.series_id).upper() for spec in ALL_SPECS})
+    if missing_rewrite_ids:
+        _log(f"macro rewrite ignored unknown series: {', '.join(sorted(missing_rewrite_ids))}")
     _log(f"macro direct refresh wrote candidate rows={total}")
     return total
 
@@ -1074,6 +1090,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--news-max-items", type=int, default=DEFAULT_MAX_ITEMS)
     parser.add_argument("--news-timeout", type=int, default=8)
     parser.add_argument("--macro-years", type=int, default=5)
+    parser.add_argument(
+        "--macro-rewrite-series",
+        default="",
+        help="Comma-separated macro series IDs to delete and rebuild for the --macro-years window, e.g. DXY.",
+    )
     parser.add_argument("--local-sp500-db", default=str(shared_prices_sqlite_path()))
     parser.add_argument("--local-macro-db", default=str(macro_db_path()))
     return parser.parse_args(argv)
@@ -1113,7 +1134,10 @@ def main(argv: list[str] | None = None) -> int:
                     timeout=int(args.news_timeout),
                 )
             if args.target in {"all", "macro"}:
-                macro_rows = refresh_macro_direct(default_years=int(args.macro_years))
+                macro_rows = refresh_macro_direct(
+                    default_years=int(args.macro_years),
+                    rewrite_series=_parse_series_ids(str(args.macro_rewrite_series)),
+                )
         else:
             if args.target in {"all", "sp500"}:
                 price_rows = upload_local_prices_to_turso(

@@ -43,10 +43,10 @@ FRED_SPECS: list[MacroSeriesSpec] = [
     MacroSeriesSpec("M2SL", "macro", "weekly", "M2SL"),
     MacroSeriesSpec("FEDFUNDS", "macro", "monthly", "FEDFUNDS"),
     MacroSeriesSpec("GDPC1", "macro", "quarterly", "GDPC1"),
+    MacroSeriesSpec("DXY", "market", "daily", "DTWEXBGS"),
 ]
 
 LOCAL_ONLY_SPECS: list[MacroSeriesSpec] = [
-    MacroSeriesSpec("DXY", "market", "daily", local_csv="data/dxy.csv", local_name="DXY", yahoo_symbol="DX-Y.NYB"),
 ]
 
 ALL_SPECS = [*FRED_SPECS, *LOCAL_ONLY_SPECS]
