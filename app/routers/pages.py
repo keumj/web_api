@@ -47,7 +47,9 @@ def _refresh_notice_card(*, visible: bool) -> str:
     data = state.get("data") if isinstance(state.get("data"), dict) else {}
     prices = data.get("prices") if isinstance(data.get("prices"), dict) else {}
     quarterly = data.get("quarterly") if isinstance(data.get("quarterly"), dict) else {}
+    snapshot = data.get("snapshot") if isinstance(data.get("snapshot"), dict) else {}
     news = data.get("news") if isinstance(data.get("news"), dict) else {}
+    market_cap = data.get("market_cap") if isinstance(data.get("market_cap"), dict) else {}
     macro = data.get("macro") if isinstance(data.get("macro"), dict) else {}
     data_html = "".join(
         f"<li>{html.escape(label)}: {html.escape(value)}</li>"
@@ -57,6 +59,15 @@ def _refresh_notice_card(*, visible: bool) -> str:
             ("뉴스", f"latest={news.get('latest_publish_date') or '-'} rows={news.get('rows') or '-'}"),
             ("매크로", f"latest={macro.get('latest_date') or '-'} rows={macro.get('rows') or '-'}"),
         )
+    )
+    data_html = (
+        f"<li>S&amp;P500 source: {html.escape(str(data.get('sp500_source') or '-'))}</li>"
+        + data_html
+        + f"<li>Market cap: latest={html.escape(str(market_cap.get('latest_date') or '-'))} "
+        f"rows={html.escape(str(market_cap.get('rows') or '-'))}</li>"
+        + f"<li>Snapshot: latest={html.escape(str(snapshot.get('latest_as_of_date') or '-'))} "
+        f"rows={html.escape(str(snapshot.get('rows') or '-'))}</li>"
+        + f"<li>Macro source: {html.escape(str(data.get('macro_source') or '-'))}</li>"
     )
     exit_code = state.get("last_exit_code") if state.get("last_exit_code") is not None else "-"
     run_meta = (

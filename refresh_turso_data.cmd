@@ -24,11 +24,11 @@ echo  Local SQLite files are kept local and are not committed.
 echo.
 echo  Python: %PYTHON_EXE%
 echo.
-echo  [1] Direct refresh: provider -^> Turso ^(S^&P 500 + macro^)
-echo  [2] Direct refresh: provider -^> Turso ^(S^&P 500 only^)
+echo  [1] Direct refresh: provider -^> Turso ^(S^&P 500 prices/fundamentals/news + macro^)
+echo  [2] Direct refresh: provider -^> Turso ^(S^&P 500 prices/fundamentals/news only^)
 echo  [3] Direct refresh: provider -^> Turso ^(macro only^)
-echo  [4] Fallback upload: local SQLite -^> Turso ^(S^&P 500 + macro^)
-echo  [5] Fallback upload: local SQLite -^> Turso ^(S^&P 500 only^)
+echo  [4] Fallback upload: local SQLite -^> Turso ^(S^&P 500 prices/fundamentals/news + macro^)
+echo  [5] Fallback upload: local SQLite -^> Turso ^(S^&P 500 prices/fundamentals/news only^)
 echo  [6] Fallback upload: local SQLite -^> Turso ^(macro only^)
 echo  [0] Exit
 echo.

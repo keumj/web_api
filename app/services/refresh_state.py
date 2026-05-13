@@ -8,8 +8,18 @@ from pathlib import Path
 from typing import Any
 
 from app.settings import settings
-from pipeline_common.shared_sp500_prices_sql import shared_prices_sqlite_path
-from pipeline_macro.macro_data_store import DEFAULT_MACRO_DB_PATH
+from pipeline_common.shared_sp500_prices_sql import (
+    _connect_shared_prices_read_db,
+    shared_prices_sqlite_path,
+    shared_prices_storage_label,
+    using_remote_shared_prices_db,
+)
+from pipeline_macro.macro_data_store import (
+    DEFAULT_MACRO_DB_PATH,
+    _connect_macro_read_db,
+    macro_storage_label,
+    using_remote_macro_db,
+)
 
 
 STATE_RELATIVE_PATH = Path("outputs") / "refresh_state.json"
@@ -87,6 +97,14 @@ def _sqlite_fetchone(path: Path, query: str) -> tuple[Any, ...] | None:
         return None
 
 
+def _db_fetchone(connect, query: str) -> tuple[Any, ...] | None:
+    try:
+        with connect() as conn:
+            return conn.execute(query).fetchone()
+    except Exception:
+        return None
+
+
 def collect_git_status(root: Path | None = None) -> dict[str, Any]:
     root_dir = root or settings.project_root
     try:
@@ -124,15 +142,47 @@ def collect_data_status(root: Path | None = None) -> dict[str, Any]:
     shared_sqlite = _resolve_root_path(root_dir, shared_prices_sqlite_path(root_dir / "data" / "sp500_shared_db"))
     macro_sqlite = _resolve_root_path(root_dir, DEFAULT_MACRO_DB_PATH)
 
-    prices = _sqlite_fetchone(shared_sqlite, "SELECT MAX(date), COUNT(*), COUNT(DISTINCT symbol) FROM prices")
-    quarterly = _sqlite_fetchone(
+    if using_remote_shared_prices_db():
+        sp500_source = shared_prices_storage_label()
+        prices = _db_fetchone(_connect_shared_prices_read_db, "SELECT MAX(date), COUNT(*), COUNT(DISTINCT symbol) FROM prices")
+        quarterly = _db_fetchone(
+            _connect_shared_prices_read_db,
+            "SELECT MAX(fiscal_date), COUNT(*), COUNT(DISTINCT symbol), MAX(updated_at) FROM fundamentals_quarterly",
+        )
+        news = _db_fetchone(
+            _connect_shared_prices_read_db,
+            "SELECT MAX(publish_date), COUNT(*), COUNT(DISTINCT ticker) FROM news_articles",
+        )
+    else:
+        sp500_source = shared_prices_storage_label(shared_sqlite)
+        prices = _sqlite_fetchone(shared_sqlite, "SELECT MAX(date), COUNT(*), COUNT(DISTINCT symbol) FROM prices")
+        quarterly = _sqlite_fetchone(
+            shared_sqlite,
+            "SELECT MAX(fiscal_date), COUNT(*), COUNT(DISTINCT symbol), MAX(updated_at) FROM fundamentals_quarterly",
+        )
+        news = _sqlite_fetchone(shared_sqlite, "SELECT MAX(publish_date), COUNT(*), COUNT(DISTINCT ticker) FROM news_articles")
+
+    if using_remote_macro_db():
+        macro_source = macro_storage_label()
+        macro = _db_fetchone(_connect_macro_read_db, "SELECT MAX(date), COUNT(*), COUNT(DISTINCT series_id) FROM macro_series")
+    else:
+        macro_source = macro_storage_label(macro_sqlite)
+        macro = _sqlite_fetchone(macro_sqlite, "SELECT MAX(date), COUNT(*), COUNT(DISTINCT series_id) FROM macro_series")
+
+    snapshot = _db_fetchone(_connect_shared_prices_read_db, "SELECT MAX(as_of_date), COUNT(*) FROM fundamentals_snapshot") if using_remote_shared_prices_db() else _sqlite_fetchone(
         shared_sqlite,
-        "SELECT MAX(fiscal_date), COUNT(*), COUNT(DISTINCT symbol), MAX(updated_at) FROM fundamentals_quarterly",
+        "SELECT MAX(as_of_date), COUNT(*) FROM fundamentals_snapshot",
     )
-    news = _sqlite_fetchone(shared_sqlite, "SELECT MAX(publish_date), COUNT(*), COUNT(DISTINCT ticker) FROM news_articles")
-    macro = _sqlite_fetchone(macro_sqlite, "SELECT MAX(date), COUNT(*), COUNT(DISTINCT series_id) FROM macro_series")
+    market_cap = _db_fetchone(_connect_shared_prices_read_db, "SELECT MAX(date), COUNT(*) FROM prices WHERE market_cap IS NOT NULL") if using_remote_shared_prices_db() else _sqlite_fetchone(
+        shared_sqlite,
+        "SELECT MAX(date), COUNT(*) FROM prices WHERE market_cap IS NOT NULL",
+    )
 
     return {
+        "sp500_source": sp500_source,
+        "macro_source": macro_source,
+        "using_remote_sp500": using_remote_shared_prices_db(),
+        "using_remote_macro": using_remote_macro_db(),
         "shared_sqlite": {
             "path": _display_project_path(shared_sqlite),
             "exists": shared_sqlite.exists(),
@@ -150,11 +200,19 @@ def collect_data_status(root: Path | None = None) -> dict[str, Any]:
             "rows": int(prices[1] or 0) if prices else None,
             "symbols": int(prices[2] or 0) if prices else None,
         },
+        "market_cap": {
+            "latest_date": str(market_cap[0]) if market_cap and market_cap[0] else None,
+            "rows": int(market_cap[1] or 0) if market_cap else None,
+        },
         "quarterly": {
             "latest_fiscal_date": str(quarterly[0]) if quarterly and quarterly[0] else None,
             "rows": int(quarterly[1] or 0) if quarterly else None,
             "symbols": int(quarterly[2] or 0) if quarterly else None,
             "updated_at": str(quarterly[3]) if quarterly and quarterly[3] else None,
+        },
+        "snapshot": {
+            "latest_as_of_date": str(snapshot[0]) if snapshot and snapshot[0] else None,
+            "rows": int(snapshot[1] or 0) if snapshot else None,
         },
         "news": {
             "latest_publish_date": str(news[0]) if news and news[0] else None,
@@ -235,11 +293,15 @@ def _data_refresh_completed(state: dict[str, Any]) -> bool:
     macro_sqlite = data.get("macro_sqlite") if isinstance(data.get("macro_sqlite"), dict) else {}
     prices = data.get("prices") if isinstance(data.get("prices"), dict) else {}
     macro = data.get("macro") if isinstance(data.get("macro"), dict) else {}
+    sp500_storage_ready = bool(data.get("using_remote_sp500")) or (
+        bool(shared_sqlite.get("exists")) and _int_value(shared_sqlite.get("size_bytes")) > 0
+    )
+    macro_storage_ready = bool(data.get("using_remote_macro")) or (
+        bool(macro_sqlite.get("exists")) and _int_value(macro_sqlite.get("size_bytes")) > 0
+    )
     return (
-        bool(shared_sqlite.get("exists"))
-        and _int_value(shared_sqlite.get("size_bytes")) > 0
-        and bool(macro_sqlite.get("exists"))
-        and _int_value(macro_sqlite.get("size_bytes")) > 0
+        sp500_storage_ready
+        and macro_storage_ready
         and _int_value(prices.get("rows")) > 0
         and _int_value(macro.get("rows")) > 0
     )

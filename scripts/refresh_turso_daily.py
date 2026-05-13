@@ -5,6 +5,7 @@ import os
 import sqlite3
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -16,9 +17,14 @@ if str(ROOT) not in sys.path:
 from pipeline_common.refresh_sp500_shared_prices import (  # noqa: E402
     DEFAULT_COMPONENTS_CSV,
     DEFAULT_START_DATE,
+    _build_market_cap_frame_from_latest_shares,
+    _download_shares_histories,
     _download_symbol_frames,
+    _market_cap_wide_to_long,
     _read_symbol_list,
+    _share_histories_to_wide,
 )
+from pipeline_common.shared_fundamentals import derive_shared_fundamental_metrics  # noqa: E402
 from pipeline_common.shared_sp500_prices_sql import (  # noqa: E402
     _connect_shared_prices_read_db,
     shared_prices_database_url,
@@ -33,6 +39,19 @@ from pipeline_macro.macro_data_store import (  # noqa: E402
     normalize_series,
 )
 from pipeline_macro.refresh_macro_prices import _load_series  # noqa: E402
+from pipeline_common.news_data import fetch_google_news_articles  # noqa: E402
+from pipeline_common.refresh_sp500_news import (  # noqa: E402
+    DEFAULT_BACKFILL_DAYS,
+    DEFAULT_INCREMENTAL_OVERLAP_DAYS,
+    DEFAULT_MAX_ITEMS,
+    _article_is_in_window,
+    _article_query_for_symbol,
+    _publish_date_text,
+)
+from pipeline_common.refresh_shared_quarterly_fundamentals import (  # noqa: E402
+    _extract_quarterly_rows,
+    _filter_rows_newer_than_db,
+)
 
 try:
     from fredapi import Fred
@@ -43,6 +62,8 @@ except Exception:  # pragma: no cover - optional deployment dependency
 @dataclass(frozen=True)
 class JobCounts:
     price_rows: int = 0
+    fundamental_rows: int = 0
+    news_rows: int = 0
     macro_rows: int = 0
 
 
@@ -88,6 +109,125 @@ def _ensure_remote_prices_schema(conn) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_prices_date ON prices(date)")
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS news_articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker TEXT NOT NULL,
+            publish_date DATETIME NOT NULL,
+            title TEXT NOT NULL,
+            link TEXT NOT NULL,
+            source TEXT NOT NULL,
+            sentiment_score REAL,
+            analysis_status TEXT NOT NULL DEFAULT 'pending'
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS fundamentals_snapshot (
+            symbol TEXT PRIMARY KEY,
+            as_of_date TEXT NOT NULL,
+            roe REAL,
+            per REAL,
+            pbr REAL,
+            source TEXT NOT NULL DEFAULT 'unknown',
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS fundamentals_quarterly (
+            symbol TEXT NOT NULL,
+            fiscal_date TEXT NOT NULL,
+            filing_date TEXT,
+            period_type TEXT NOT NULL DEFAULT 'quarterly',
+            net_income REAL,
+            diluted_eps REAL,
+            stockholders_equity REAL,
+            total_assets REAL,
+            total_debt REAL,
+            current_assets REAL,
+            current_liabilities REAL,
+            operating_cash_flow REAL,
+            free_cash_flow REAL,
+            source TEXT NOT NULL DEFAULT 'unknown',
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (symbol, fiscal_date)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_news_articles_ticker_publish_date ON news_articles(ticker, publish_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_news_articles_publish_date ON news_articles(publish_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_news_articles_ticker_publish_day ON news_articles(ticker, date(publish_date))")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_news_articles_analysis_status_publish_date ON news_articles(analysis_status, publish_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fundamentals_snapshot_as_of_date ON fundamentals_snapshot(as_of_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fundamentals_quarterly_symbol_fiscal_date ON fundamentals_quarterly(symbol, fiscal_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fundamentals_quarterly_fiscal_date ON fundamentals_quarterly(fiscal_date)")
+    conn.execute(
+        """
+        CREATE VIEW IF NOT EXISTS news_articles_price_context AS
+        SELECT
+            n.id,
+            n.ticker,
+            n.publish_date,
+            date(n.publish_date) AS publish_day,
+            n.title,
+            n.link,
+            n.source,
+            n.sentiment_score,
+            n.analysis_status,
+            p.date AS price_date,
+            p.open,
+            p.high,
+            p.low,
+            p.close,
+            p.adj_close,
+            p.volume,
+            p.market_cap
+        FROM news_articles AS n
+        LEFT JOIN prices AS p
+            ON p.symbol = n.ticker
+           AND p.date = date(n.publish_date)
+        """
+    )
+    conn.execute(
+        """
+        CREATE VIEW IF NOT EXISTS news_articles_market_context AS
+        SELECT
+            n.id,
+            n.ticker,
+            n.publish_date,
+            date(n.publish_date) AS publish_day,
+            n.title,
+            n.link,
+            n.source,
+            n.sentiment_score,
+            n.analysis_status,
+            p.date AS reference_price_date,
+            CASE
+                WHEN p.date = date(n.publish_date) THEN 1
+                ELSE 0
+            END AS matched_on_publish_day,
+            p.open,
+            p.high,
+            p.low,
+            p.close,
+            p.adj_close,
+            p.volume,
+            p.market_cap
+        FROM news_articles AS n
+        LEFT JOIN prices AS p
+            ON p.symbol = n.ticker
+           AND p.date = (
+                SELECT MAX(p2.date)
+                FROM prices AS p2
+                WHERE p2.symbol = n.ticker
+                  AND p2.date <= date(n.publish_date)
+           )
+        """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS refresh_runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             job_name TEXT NOT NULL,
@@ -96,11 +236,14 @@ def _ensure_remote_prices_schema(conn) -> None:
             started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             finished_at TEXT,
             price_rows INTEGER NOT NULL DEFAULT 0,
+            fundamental_rows INTEGER NOT NULL DEFAULT 0,
+            news_rows INTEGER NOT NULL DEFAULT 0,
             macro_rows INTEGER NOT NULL DEFAULT 0,
             message TEXT NOT NULL DEFAULT ''
         )
         """
     )
+    _ensure_refresh_run_columns(conn)
     conn.commit()
 
 
@@ -144,16 +287,38 @@ def _ensure_remote_macro_schema(conn) -> None:
             started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             finished_at TEXT,
             price_rows INTEGER NOT NULL DEFAULT 0,
+            fundamental_rows INTEGER NOT NULL DEFAULT 0,
+            news_rows INTEGER NOT NULL DEFAULT 0,
             macro_rows INTEGER NOT NULL DEFAULT 0,
             message TEXT NOT NULL DEFAULT ''
         )
         """
     )
+    _ensure_refresh_run_columns(conn)
     conn.commit()
 
 
+def _ensure_refresh_run_columns(conn) -> None:
+    cols = {str(row[1]).strip().lower() for row in conn.execute("PRAGMA table_info(refresh_runs)").fetchall()}
+    if "fundamental_rows" not in cols:
+        conn.execute("ALTER TABLE refresh_runs ADD COLUMN fundamental_rows INTEGER NOT NULL DEFAULT 0")
+    if "news_rows" not in cols:
+        conn.execute("ALTER TABLE refresh_runs ADD COLUMN news_rows INTEGER NOT NULL DEFAULT 0")
+
+
 def _table_max_date(conn, table: str, *, where_sql: str = "", params: tuple[object, ...] = ()) -> str | None:
-    query = f"SELECT MAX(date) FROM {table}"
+    return _table_max_value(conn, table, "date", where_sql=where_sql, params=params)
+
+
+def _table_max_value(
+    conn,
+    table: str,
+    column: str,
+    *,
+    where_sql: str = "",
+    params: tuple[object, ...] = (),
+) -> str | None:
+    query = f"SELECT MAX({column}) FROM {table}"
     if where_sql:
         query += f" WHERE {where_sql}"
     row = conn.execute(query, params).fetchone()
@@ -228,6 +393,102 @@ def _insert_price_rows(conn, rows: list[tuple[object, ...]], *, chunk_size: int 
     return len(rows)
 
 
+def _frames_to_close_metrics_wide(frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    parts: list[pd.Series] = []
+    for symbol, frame in frames.items():
+        if frame is None or frame.empty or "Close" not in frame.columns:
+            continue
+        clean = frame.copy()
+        clean.index = pd.to_datetime(clean.index, errors="coerce").normalize()
+        clean = clean[~clean.index.isna()].sort_index()
+        close = pd.to_numeric(clean["Close"], errors="coerce").dropna()
+        if close.empty:
+            continue
+        parts.append(close.rename(f"{str(symbol).strip().upper()}_Close"))
+    if not parts:
+        return pd.DataFrame()
+    out = pd.concat(parts, axis=1).sort_index()
+    out.index = pd.to_datetime(out.index, errors="coerce").normalize()
+    out = out[~out.index.isna()]
+    return out.dropna(how="all")
+
+
+def _update_market_caps_direct(
+    conn,
+    *,
+    symbols: list[str],
+    frames: dict[str, pd.DataFrame],
+    fetch_start: str,
+    end_date: str,
+    chunk_size: int,
+    provider: str,
+    pause_seconds: float,
+) -> int:
+    metrics_df = _frames_to_close_metrics_wide(frames)
+    if metrics_df.empty:
+        _log("S&P500 market cap direct refresh skipped: no close prices.")
+        return 0
+    try:
+        shares_histories, missing = _download_shares_histories(
+            symbols,
+            start_date=fetch_start,
+            end_date=end_date,
+            provider=provider,
+            chunk_size=chunk_size,
+            pause_seconds=pause_seconds,
+        )
+    except Exception as exc:
+        _log(f"S&P500 market cap direct refresh skipped: {type(exc).__name__}: {exc}")
+        return 0
+    if missing:
+        _log(f"S&P500 market cap missing share histories: {len(missing)}")
+    shares_df = _share_histories_to_wide(shares_histories)
+    market_cap_df = _build_market_cap_frame_from_latest_shares(metrics_df, shares_df)
+    market_cap_long = _market_cap_wide_to_long(
+        market_cap_df,
+        only_after=(pd.Timestamp(fetch_start).normalize() - pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
+    )
+    if market_cap_long.empty:
+        _log("S&P500 market cap direct refresh skipped: no candidate rows.")
+        return 0
+    rows = [
+        (float(row.market_cap), str(row.symbol), str(row.date))
+        for row in market_cap_long.itertuples(index=False)
+        if pd.notna(row.market_cap)
+    ]
+    attempted = _executemany_chunks(
+        conn,
+        """
+        UPDATE prices
+        SET market_cap = ?
+        WHERE symbol = ? AND date = ?
+        """,
+        rows,
+    )
+    _log(f"S&P500 market cap direct refresh candidate rows={attempted}")
+    return attempted
+
+
+def _remote_has_table(conn, table: str) -> bool:
+    row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name = ?", (table,)).fetchone()
+    return row is not None
+
+
+def _local_has_table(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name = ?", (table,)).fetchone()
+    return row is not None
+
+
+def _executemany_chunks(conn, sql: str, rows: list[tuple[object, ...]], *, chunk_size: int = 1000) -> int:
+    if not rows:
+        return 0
+    size = max(int(chunk_size), 1)
+    for i in range(0, len(rows), size):
+        conn.executemany(sql, rows[i : i + size])
+    conn.commit()
+    return len(rows)
+
+
 def refresh_prices_direct(
     *,
     symbols_csv: Path,
@@ -267,8 +528,229 @@ def refresh_prices_direct(
             only_after=(pd.Timestamp(fetch_start).normalize() - pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
         )
         attempted = _insert_price_rows(conn, rows)
+        _update_market_caps_direct(
+            conn,
+            symbols=symbols,
+            frames=frames,
+            fetch_start=fetch_start,
+            end_date=end_date,
+            chunk_size=chunk_size,
+            provider=provider,
+            pause_seconds=pause_seconds,
+        )
         _log(f"S&P500 direct refresh wrote candidate rows={attempted}")
         return attempted
+
+
+def _sp500_symbols(symbols_csv: Path) -> list[str]:
+    return _read_symbol_list(symbols_csv, Path("__remote_turso__.sqlite"))
+
+
+def refresh_fundamentals_direct(*, symbols_csv: Path, limit_per_symbol: int, pause_seconds: float) -> int:
+    if not shared_prices_database_url():
+        raise RuntimeError("KEUMJ_SP500_DATABASE_URL must be set for direct fundamentals refresh.")
+    symbols = _sp500_symbols(symbols_csv)
+    total = 0
+    with _connect_shared_prices_read_db() as conn:
+        _ensure_remote_prices_schema(conn)
+        for idx, symbol in enumerate(symbols, start=1):
+            old_max = _table_max_value(
+                conn,
+                "fundamentals_quarterly",
+                "fiscal_date",
+                where_sql="symbol = ?",
+                params=(symbol,),
+            )
+            try:
+                rows = _extract_quarterly_rows(symbol, limit_per_symbol=limit_per_symbol)
+            except Exception as exc:
+                _log(f"fundamentals {symbol}: failed {type(exc).__name__}: {exc}")
+                continue
+            rows_to_store, _ = _filter_rows_newer_than_db(rows, old_max)
+            if not rows_to_store:
+                continue
+            tuples = [
+                (
+                    row.get("symbol"),
+                    row.get("fiscal_date"),
+                    row.get("filing_date"),
+                    row.get("period_type"),
+                    row.get("net_income"),
+                    row.get("diluted_eps"),
+                    row.get("stockholders_equity"),
+                    row.get("total_assets"),
+                    row.get("total_debt"),
+                    row.get("current_assets"),
+                    row.get("current_liabilities"),
+                    row.get("operating_cash_flow"),
+                    row.get("free_cash_flow"),
+                    row.get("source"),
+                )
+                for row in rows_to_store
+            ]
+            total += _executemany_chunks(
+                conn,
+                """
+                INSERT INTO fundamentals_quarterly(
+                    symbol, fiscal_date, filing_date, period_type, net_income, diluted_eps,
+                    stockholders_equity, total_assets, total_debt, current_assets,
+                    current_liabilities, operating_cash_flow, free_cash_flow, source
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(symbol, fiscal_date) DO UPDATE SET
+                    filing_date=excluded.filing_date,
+                    period_type=excluded.period_type,
+                    net_income=excluded.net_income,
+                    diluted_eps=excluded.diluted_eps,
+                    stockholders_equity=excluded.stockholders_equity,
+                    total_assets=excluded.total_assets,
+                    total_debt=excluded.total_debt,
+                    current_assets=excluded.current_assets,
+                    current_liabilities=excluded.current_liabilities,
+                    operating_cash_flow=excluded.operating_cash_flow,
+                    free_cash_flow=excluded.free_cash_flow,
+                    source=excluded.source,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                tuples,
+            )
+            if idx % 25 == 0:
+                _log(f"fundamentals progress {idx}/{len(symbols)} total_candidate_rows={total}")
+            if pause_seconds > 0:
+                import time
+
+                time.sleep(float(pause_seconds))
+    _log(f"fundamentals direct refresh candidate rows={total}")
+    return total
+
+
+def _sqlite_value(value: object) -> object:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except TypeError:
+        return value
+    if hasattr(value, "item"):
+        return value.item()
+    return value
+
+
+def refresh_fundamentals_snapshot_direct(*, symbols_csv: Path, limit_per_symbol: int) -> int:
+    if not shared_prices_database_url():
+        raise RuntimeError("KEUMJ_SP500_DATABASE_URL must be set for direct fundamentals snapshot refresh.")
+    symbols = _sp500_symbols(symbols_csv)
+    frame, source = derive_shared_fundamental_metrics(
+        symbols,
+        limit_per_symbol=max(int(limit_per_symbol), 4),
+    )
+    if frame is None or frame.empty:
+        _log("fundamentals_snapshot direct refresh skipped: no derived rows.")
+        return 0
+    rows = []
+    for row in frame.itertuples(index=False):
+        data = row._asdict()
+        symbol = str(data.get("symbol", "")).strip().upper()
+        as_of_date = _sqlite_value(data.get("as_of_date"))
+        if not symbol or not as_of_date:
+            continue
+        rows.append(
+            (
+                symbol,
+                str(as_of_date),
+                _sqlite_value(data.get("roe")),
+                _sqlite_value(data.get("per")),
+                _sqlite_value(data.get("pbr")),
+                source or _sqlite_value(data.get("source")) or "turso:derived",
+            )
+        )
+    with _connect_shared_prices_read_db() as conn:
+        _ensure_remote_prices_schema(conn)
+        attempted = _executemany_chunks(
+            conn,
+            """
+            INSERT INTO fundamentals_snapshot(symbol, as_of_date, roe, per, pbr, source)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(symbol) DO UPDATE SET
+                as_of_date=excluded.as_of_date,
+                roe=excluded.roe,
+                per=excluded.per,
+                pbr=excluded.pbr,
+                source=excluded.source,
+                updated_at=CURRENT_TIMESTAMP
+            """,
+            rows,
+        )
+    _log(f"fundamentals_snapshot direct refresh candidate rows={attempted}")
+    return attempted
+
+
+def refresh_news_direct(
+    *,
+    symbols_csv: Path,
+    backfill_days: int,
+    overlap_days: int,
+    max_items: int,
+    timeout: int,
+) -> int:
+    if not shared_prices_database_url():
+        raise RuntimeError("KEUMJ_SP500_DATABASE_URL must be set for direct news refresh.")
+    symbols = _sp500_symbols(symbols_csv)
+    run_date = datetime.now().date()
+    total = 0
+    with _connect_shared_prices_read_db() as conn:
+        _ensure_remote_prices_schema(conn)
+        max_publish = _table_max_value(conn, "news_articles", "publish_date")
+        if max_publish:
+            start_day = pd.Timestamp(max_publish).date() - timedelta(days=max(int(overlap_days), 0))
+        else:
+            start_day = run_date - timedelta(days=max(int(backfill_days) - 1, 0))
+        if start_day > run_date:
+            start_day = run_date
+        for idx, symbol in enumerate(symbols, start=1):
+            try:
+                articles = fetch_google_news_articles(
+                    query=_article_query_for_symbol(symbol),
+                    max_items=max_items,
+                    timeout=timeout,
+                )
+            except Exception as exc:
+                _log(f"news {symbol}: failed {type(exc).__name__}: {exc}")
+                continue
+            rows = []
+            for article in articles:
+                if article.publish_date is None or not _article_is_in_window(article, start_date=start_day, as_of_date=run_date):
+                    continue
+                rows.append(
+                    (
+                        symbol,
+                        _publish_date_text(article.publish_date),
+                        article.title,
+                        article.link,
+                        article.source,
+                        None,
+                        "pending",
+                        symbol,
+                        article.link,
+                    )
+                )
+            total += _executemany_chunks(
+                conn,
+                """
+                INSERT INTO news_articles (ticker, publish_date, title, link, source, sentiment_score, analysis_status)
+                SELECT ?, ?, ?, ?, ?, ?, ?
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM news_articles
+                    WHERE ticker = ? AND link = ?
+                )
+                """,
+                rows,
+            )
+            if idx % 50 == 0:
+                _log(f"news progress {idx}/{len(symbols)} total_candidate_rows={total}")
+    _log(f"news direct refresh candidate rows={total}")
+    return total
 
 
 def _macro_series_rows(spec: MacroSeriesSpec, series: pd.Series, source: str) -> list[tuple[object, ...]]:
@@ -374,7 +856,145 @@ def upload_local_prices_to_turso(*, local_db: Path, overlap_days: int) -> int:
         query += " ORDER BY date, symbol"
         rows = [tuple(row) for row in local.execute(query, params).fetchall()]
         attempted = _insert_price_rows(remote, rows)
-        _log(f"local S&P500 upload old_max={old_max or '-'} candidate rows={attempted}")
+        market_cap_query = """
+            SELECT market_cap, symbol, date
+            FROM prices
+            WHERE market_cap IS NOT NULL
+        """
+        market_cap_params: list[object] = []
+        if old_max:
+            cutoff = _overlap_fetch_start_date("1900-01-01", old_max, overlap_days)
+            market_cap_query += " AND date >= ?"
+            market_cap_params.append(cutoff)
+        market_cap_rows = [tuple(row) for row in local.execute(market_cap_query, market_cap_params).fetchall()]
+        _executemany_chunks(
+            remote,
+            """
+            UPDATE prices
+            SET market_cap = ?
+            WHERE symbol = ? AND date = ?
+            """,
+            market_cap_rows,
+        )
+        _log(
+            f"local S&P500 upload old_max={old_max or '-'} "
+            f"price_candidate_rows={attempted} market_cap_candidate_rows={len(market_cap_rows)}"
+        )
+        return attempted
+
+
+def upload_local_fundamentals_to_turso(*, local_db: Path) -> int:
+    if not shared_prices_database_url():
+        raise RuntimeError("KEUMJ_SP500_DATABASE_URL must be set for local fundamentals upload.")
+    if not local_db.is_file():
+        raise FileNotFoundError(f"Local S&P500 SQLite DB not found: {local_db}")
+    total = 0
+    with _connect_shared_prices_read_db() as remote, sqlite3.connect(local_db) as local:
+        _ensure_remote_prices_schema(remote)
+        if _local_has_table(local, "fundamentals_snapshot"):
+            rows = [
+                tuple(row)
+                for row in local.execute(
+                    """
+                    SELECT symbol, as_of_date, roe, per, pbr, source
+                    FROM fundamentals_snapshot
+                    """
+                ).fetchall()
+            ]
+            total += _executemany_chunks(
+                remote,
+                """
+                INSERT INTO fundamentals_snapshot(symbol, as_of_date, roe, per, pbr, source)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(symbol) DO UPDATE SET
+                    as_of_date=excluded.as_of_date,
+                    roe=excluded.roe,
+                    per=excluded.per,
+                    pbr=excluded.pbr,
+                    source=excluded.source,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                rows,
+            )
+            _log(f"local fundamentals_snapshot upload candidate rows={len(rows)}")
+        if _local_has_table(local, "fundamentals_quarterly"):
+            rows = [
+                tuple(row)
+                for row in local.execute(
+                    """
+                    SELECT
+                        symbol, fiscal_date, filing_date, period_type, net_income, diluted_eps,
+                        stockholders_equity, total_assets, total_debt, current_assets,
+                        current_liabilities, operating_cash_flow, free_cash_flow, source
+                    FROM fundamentals_quarterly
+                    """
+                ).fetchall()
+            ]
+            total += _executemany_chunks(
+                remote,
+                """
+                INSERT INTO fundamentals_quarterly(
+                    symbol, fiscal_date, filing_date, period_type, net_income, diluted_eps,
+                    stockholders_equity, total_assets, total_debt, current_assets,
+                    current_liabilities, operating_cash_flow, free_cash_flow, source
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(symbol, fiscal_date) DO UPDATE SET
+                    filing_date=excluded.filing_date,
+                    period_type=excluded.period_type,
+                    net_income=excluded.net_income,
+                    diluted_eps=excluded.diluted_eps,
+                    stockholders_equity=excluded.stockholders_equity,
+                    total_assets=excluded.total_assets,
+                    total_debt=excluded.total_debt,
+                    current_assets=excluded.current_assets,
+                    current_liabilities=excluded.current_liabilities,
+                    operating_cash_flow=excluded.operating_cash_flow,
+                    free_cash_flow=excluded.free_cash_flow,
+                    source=excluded.source,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                rows,
+            )
+            _log(f"local fundamentals_quarterly upload candidate rows={len(rows)}")
+    return total
+
+
+def upload_local_news_to_turso(*, local_db: Path, overlap_days: int) -> int:
+    if not shared_prices_database_url():
+        raise RuntimeError("KEUMJ_SP500_DATABASE_URL must be set for local news upload.")
+    if not local_db.is_file():
+        raise FileNotFoundError(f"Local S&P500 SQLite DB not found: {local_db}")
+    with _connect_shared_prices_read_db() as remote, sqlite3.connect(local_db) as local:
+        _ensure_remote_prices_schema(remote)
+        if not _local_has_table(local, "news_articles"):
+            _log("local news_articles table not found; skipping news upload")
+            return 0
+        old_max = _table_max_value(remote, "news_articles", "publish_date") if _remote_has_table(remote, "news_articles") else None
+        query = """
+            SELECT ticker, publish_date, title, link, source, sentiment_score, analysis_status
+            FROM news_articles
+        """
+        params: list[object] = []
+        if old_max:
+            cutoff = _overlap_fetch_start_date("1900-01-01", old_max, overlap_days)
+            query += " WHERE date(publish_date) >= date(?)"
+            params.append(cutoff)
+        query += " ORDER BY publish_date, ticker, id"
+        rows = [tuple(row) for row in local.execute(query, params).fetchall()]
+        attempted = _executemany_chunks(
+            remote,
+            """
+            INSERT INTO news_articles (ticker, publish_date, title, link, source, sentiment_score, analysis_status)
+            SELECT ?, ?, ?, ?, ?, ?, ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM news_articles
+                WHERE ticker = ? AND publish_date = ? AND link = ?
+            )
+            """,
+            [(*row, row[0], row[1], row[3]) for row in rows],
+        )
+        _log(f"local news upload old_max={old_max or '-'} candidate rows={attempted}")
         return attempted
 
 
@@ -417,10 +1037,22 @@ def _record_run(status: str, mode: str, counts: JobCounts, message: str) -> None
                 ensure(conn)
                 conn.execute(
                     """
-                    INSERT INTO refresh_runs(job_name, mode, status, finished_at, price_rows, macro_rows, message)
-                    VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?)
+                    INSERT INTO refresh_runs(
+                        job_name, mode, status, finished_at,
+                        price_rows, fundamental_rows, news_rows, macro_rows, message
+                    )
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?)
                     """,
-                    (name, mode, status, int(counts.price_rows), int(counts.macro_rows), message[:1000]),
+                    (
+                        name,
+                        mode,
+                        status,
+                        int(counts.price_rows),
+                        int(counts.fundamental_rows),
+                        int(counts.news_rows),
+                        int(counts.macro_rows),
+                        message[:1000],
+                    ),
                 )
                 conn.commit()
         except Exception as exc:
@@ -437,6 +1069,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--provider", choices=["auto", "yfinance", "fdr"], default="auto")
     parser.add_argument("--pause-seconds", type=float, default=0.0)
     parser.add_argument("--overlap-days", type=int, default=3, help="Re-read recent days to fill partial failed runs.")
+    parser.add_argument("--fundamental-limit-per-symbol", type=int, default=4)
+    parser.add_argument("--news-backfill-days", type=int, default=DEFAULT_BACKFILL_DAYS)
+    parser.add_argument("--news-max-items", type=int, default=DEFAULT_MAX_ITEMS)
+    parser.add_argument("--news-timeout", type=int, default=8)
     parser.add_argument("--macro-years", type=int, default=5)
     parser.add_argument("--local-sp500-db", default=str(shared_prices_sqlite_path()))
     parser.add_argument("--local-macro-db", default=str(macro_db_path()))
@@ -447,6 +1083,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         price_rows = 0
+        fundamental_rows = 0
+        news_rows = 0
         macro_rows = 0
         if args.mode == "direct":
             if args.target in {"all", "sp500"}:
@@ -458,6 +1096,22 @@ def main(argv: list[str] | None = None) -> int:
                     pause_seconds=float(args.pause_seconds),
                     overlap_days=int(args.overlap_days),
                 )
+                fundamental_rows = refresh_fundamentals_direct(
+                    symbols_csv=Path(args.symbols_csv),
+                    limit_per_symbol=int(args.fundamental_limit_per_symbol),
+                    pause_seconds=float(args.pause_seconds),
+                )
+                fundamental_rows += refresh_fundamentals_snapshot_direct(
+                    symbols_csv=Path(args.symbols_csv),
+                    limit_per_symbol=int(args.fundamental_limit_per_symbol),
+                )
+                news_rows = refresh_news_direct(
+                    symbols_csv=Path(args.symbols_csv),
+                    backfill_days=int(args.news_backfill_days),
+                    overlap_days=int(args.overlap_days),
+                    max_items=int(args.news_max_items),
+                    timeout=int(args.news_timeout),
+                )
             if args.target in {"all", "macro"}:
                 macro_rows = refresh_macro_direct(default_years=int(args.macro_years))
         else:
@@ -466,11 +1120,24 @@ def main(argv: list[str] | None = None) -> int:
                     local_db=Path(args.local_sp500_db),
                     overlap_days=int(args.overlap_days),
                 )
+                fundamental_rows = upload_local_fundamentals_to_turso(local_db=Path(args.local_sp500_db))
+                news_rows = upload_local_news_to_turso(
+                    local_db=Path(args.local_sp500_db),
+                    overlap_days=int(args.overlap_days),
+                )
             if args.target in {"all", "macro"}:
                 macro_rows = upload_local_macro_to_turso(local_db=Path(args.local_macro_db))
-        counts = JobCounts(price_rows=price_rows, macro_rows=macro_rows)
+        counts = JobCounts(
+            price_rows=price_rows,
+            fundamental_rows=fundamental_rows,
+            news_rows=news_rows,
+            macro_rows=macro_rows,
+        )
         _record_run("ok", str(args.mode), counts, "completed")
-        _log(f"SUMMARY status=ok mode={args.mode} price_rows={price_rows} macro_rows={macro_rows}")
+        _log(
+            f"SUMMARY status=ok mode={args.mode} price_rows={price_rows} "
+            f"fundamental_rows={fundamental_rows} news_rows={news_rows} macro_rows={macro_rows}"
+        )
         return 0
     except Exception as exc:
         counts = JobCounts()
