@@ -104,6 +104,77 @@ def shared_prices_sqlite_path(shared_db_root: Path | str | None = None) -> Path:
     return _resolve_shared_root(shared_db_root) / DEFAULT_SQLITE_NAME
 
 
+def _env_first(*names: str) -> str:
+    for name in names:
+        value = str(os.getenv(name, "")).strip()
+        if value:
+            return value
+    return ""
+
+
+def shared_prices_database_url() -> str:
+    return _env_first("KEUMJ_SP500_DATABASE_URL", "KEUMJ_SP500_TURSO_DATABASE_URL", "TURSO_SP500_DATABASE_URL")
+
+
+def shared_prices_database_auth_token() -> str:
+    return _env_first("KEUMJ_SP500_DATABASE_AUTH_TOKEN", "KEUMJ_SP500_TURSO_AUTH_TOKEN", "TURSO_SP500_AUTH_TOKEN")
+
+
+def using_remote_shared_prices_db() -> bool:
+    return bool(shared_prices_database_url())
+
+
+def shared_prices_storage_label(target: Path | str | None = None) -> str:
+    url = shared_prices_database_url()
+    if url:
+        return f"turso:{url}"
+    path = Path(target) if target is not None else shared_prices_sqlite_path()
+    return f"sqlite:{path.as_posix()}"
+
+
+class _RemoteConnectionProxy:
+    _keumj_remote_libsql = True
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def __getattr__(self, name: str):
+        return getattr(self._conn, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        close = getattr(self._conn, "close", None)
+        if close is not None:
+            close()
+
+
+def _connect_shared_prices_read_db(target: Path | str | None = None):
+    url = shared_prices_database_url()
+    if url:
+        try:
+            import libsql
+        except ImportError as exc:
+            raise RuntimeError(
+                "KEUMJ_SP500_DATABASE_URL is set, but the 'libsql' package is not installed."
+            ) from exc
+        kwargs: dict[str, str] = {"database": url}
+        token = shared_prices_database_auth_token()
+        if token:
+            kwargs["auth_token"] = token
+        return _RemoteConnectionProxy(libsql.connect(**kwargs))
+    path = Path(target) if target is not None else shared_prices_sqlite_path()
+    return sqlite3.connect(path)
+
+
+def _shared_prices_available(target: Path | str | None = None) -> bool:
+    if using_remote_shared_prices_db():
+        return True
+    path = Path(target) if target is not None else shared_prices_sqlite_path()
+    return path.exists() and path.is_file()
+
+
 def _read_shared_price_csv(path: Path, symbol: str) -> pd.DataFrame | None:
     if not path.exists() or not path.is_file():
         return None
@@ -178,6 +249,8 @@ def _read_shared_price_csv(path: Path, symbol: str) -> pd.DataFrame | None:
 
 
 def _ensure_prices_table_schema(conn: sqlite3.Connection) -> None:
+    if getattr(conn, "_keumj_remote_libsql", False) or conn.__class__.__module__.split(".", 1)[0] == "libsql":
+        return
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS prices (
@@ -474,9 +547,9 @@ def load_shared_fundamentals_for_symbols(
         return None, None
     root = _resolve_shared_root(shared_db_root)
     target = Path(db_path) if db_path is not None else shared_prices_sqlite_path(root)
-    if not target.exists() or not target.is_file():
+    if not _shared_prices_available(target):
         return None, None
-    with sqlite3.connect(target) as conn:
+    with _connect_shared_prices_read_db(target) as conn:
         _ensure_prices_table_schema(conn)
         placeholders = ",".join("?" for _ in normalized)
         frame = pd.read_sql_query(
@@ -495,7 +568,7 @@ def load_shared_fundamentals_for_symbols(
     frame["as_of_date"] = pd.to_datetime(frame["as_of_date"], errors="coerce").dt.strftime("%Y-%m-%d")
     for col in ["roe", "per", "pbr"]:
         frame[col] = pd.to_numeric(frame[col], errors="coerce")
-    return frame, f"sqlite:{target.as_posix()}"
+    return frame, shared_prices_storage_label(target)
 
 
 def _normalize_quarterly_fundamentals_frame(
@@ -656,9 +729,9 @@ def load_shared_quarterly_fundamentals_for_symbols(
         return None, None
     root = _resolve_shared_root(shared_db_root)
     target = Path(db_path) if db_path is not None else shared_prices_sqlite_path(root)
-    if not target.exists() or not target.is_file():
+    if not _shared_prices_available(target):
         return None, None
-    with sqlite3.connect(target) as conn:
+    with _connect_shared_prices_read_db(target) as conn:
         _ensure_prices_table_schema(conn)
         placeholders = ",".join("?" for _ in normalized)
         query = f"""
@@ -702,7 +775,7 @@ def load_shared_quarterly_fundamentals_for_symbols(
         frame[col] = pd.to_numeric(frame[col], errors="coerce")
     if limit_per_symbol is not None and int(limit_per_symbol) > 0:
         frame = frame.groupby("symbol", as_index=False, group_keys=False).head(int(limit_per_symbol)).reset_index(drop=True)
-    return frame, f"sqlite:{target.as_posix()}"
+    return frame, shared_prices_storage_label(target)
 
 
 def _normalize_news_analysis_status(value: str) -> str:
@@ -740,10 +813,10 @@ def claim_pending_news_articles_for_analysis(
 
     root = _resolve_shared_root(shared_db_root)
     target = Path(db_path) if db_path is not None else shared_prices_sqlite_path(root)
-    if not target.exists() or not target.is_file():
+    if not _shared_prices_available(target):
         return []
 
-    with sqlite3.connect(target) as conn:
+    with _connect_shared_prices_read_db(target) as conn:
         _ensure_prices_table_schema(conn)
         conn.execute("BEGIN IMMEDIATE")
         query = (
@@ -797,10 +870,10 @@ def update_news_article_analysis_status(
 
     root = _resolve_shared_root(shared_db_root)
     target = Path(db_path) if db_path is not None else shared_prices_sqlite_path(root)
-    if not target.exists() or not target.is_file():
+    if not _shared_prices_available(target):
         return False
 
-    with sqlite3.connect(target) as conn:
+    with _connect_shared_prices_read_db(target) as conn:
         _ensure_prices_table_schema(conn)
         row = conn.execute(
             "SELECT analysis_status FROM news_articles WHERE id = ?",
@@ -914,7 +987,7 @@ def _query_shared_prices_sqlite(
     *,
     db_path: Path,
 ) -> pd.DataFrame:
-    with sqlite3.connect(db_path) as conn:
+    with _connect_shared_prices_read_db(db_path) as conn:
         return pd.read_sql_query(query, conn, params=params)
 
 
@@ -935,8 +1008,8 @@ def load_shared_ohlcv_for_symbol(
     start_text = pd.Timestamp(start_date).normalize().strftime("%Y-%m-%d") if start_date is not None else None
     end_text = pd.Timestamp(end_date).normalize().strftime("%Y-%m-%d") if end_date is not None else None
 
-    if target.exists() and target.is_file():
-        with sqlite3.connect(target) as conn:
+    if _shared_prices_available(target):
+        with _connect_shared_prices_read_db(target) as conn:
             _ensure_prices_table_schema(conn)
         query = "SELECT date, open, high, low, close, volume FROM prices WHERE symbol = ?"
         params: list[object] = [symbol_clean]
@@ -961,7 +1034,7 @@ def load_shared_ohlcv_for_symbol(
             if not raw.empty:
                 out = raw.set_index(raw["date"].dt.normalize())[["open", "high", "low", "close", "volume"]]
                 out = out[~out.index.duplicated(keep="last")].sort_index()
-                return out, f"sqlite:{target.as_posix()}"
+                return out, shared_prices_storage_label(target)
 
     return None, None
 
@@ -991,8 +1064,8 @@ def load_shared_close_prices_for_symbols(
     start_text = pd.Timestamp(start_date).normalize().strftime("%Y-%m-%d")
     end_text = pd.Timestamp(end_date).normalize().strftime("%Y-%m-%d") if end_date is not None else None
 
-    if target.exists() and target.is_file():
-        with sqlite3.connect(target) as conn:
+    if _shared_prices_available(target):
+        with _connect_shared_prices_read_db(target) as conn:
             _ensure_prices_table_schema(conn)
         placeholders = ",".join(["?"] * len(normalized))
         query = f"SELECT date, symbol, close FROM prices WHERE symbol IN ({placeholders})"
@@ -1006,7 +1079,7 @@ def load_shared_close_prices_for_symbols(
 
         pivot = _load_shared_metric_pivot(target, query=query, params=params, value_col="close", symbols=normalized)
         if pivot is not None:
-            return pivot, f"sqlite:{target.as_posix()}"
+            return pivot, shared_prices_storage_label(target)
 
     return None, None
 
@@ -1065,8 +1138,8 @@ def load_shared_adjusted_close_prices_for_symbols(
     start_text = pd.Timestamp(start_date).normalize().strftime("%Y-%m-%d")
     end_text = pd.Timestamp(end_date).normalize().strftime("%Y-%m-%d") if end_date is not None else None
 
-    if target.exists() and target.is_file():
-        with sqlite3.connect(target) as conn:
+    if _shared_prices_available(target):
+        with _connect_shared_prices_read_db(target) as conn:
             _ensure_prices_table_schema(conn)
         placeholders = ",".join(["?"] * len(normalized))
         query = f"SELECT date, symbol, adj_close FROM prices WHERE symbol IN ({placeholders})"
@@ -1079,7 +1152,7 @@ def load_shared_adjusted_close_prices_for_symbols(
         query += " AND adj_close IS NOT NULL ORDER BY date, symbol"
         pivot = _load_shared_metric_pivot(target, query=query, params=params, value_col="adj_close", symbols=normalized)
         if pivot is not None:
-            return pivot, f"sqlite:{target.as_posix()}"
+            return pivot, shared_prices_storage_label(target)
 
     return None, None
 
@@ -1109,8 +1182,8 @@ def load_shared_dividends_for_symbols(
     start_text = pd.Timestamp(start_date).normalize().strftime("%Y-%m-%d")
     end_text = pd.Timestamp(end_date).normalize().strftime("%Y-%m-%d") if end_date is not None else None
 
-    if target.exists() and target.is_file():
-        with sqlite3.connect(target) as conn:
+    if _shared_prices_available(target):
+        with _connect_shared_prices_read_db(target) as conn:
             _ensure_prices_table_schema(conn)
         placeholders = ",".join(["?"] * len(normalized))
         query = f"SELECT date, symbol, dividends FROM prices WHERE symbol IN ({placeholders})"
@@ -1123,7 +1196,7 @@ def load_shared_dividends_for_symbols(
         query += " AND dividends IS NOT NULL ORDER BY date, symbol"
         pivot = _load_shared_metric_pivot(target, query=query, params=params, value_col="dividends", symbols=normalized)
         if pivot is not None:
-            return pivot, f"sqlite:{target.as_posix()}"
+            return pivot, shared_prices_storage_label(target)
 
     return None, None
 
@@ -1153,8 +1226,8 @@ def load_shared_stock_splits_for_symbols(
     start_text = pd.Timestamp(start_date).normalize().strftime("%Y-%m-%d")
     end_text = pd.Timestamp(end_date).normalize().strftime("%Y-%m-%d") if end_date is not None else None
 
-    if target.exists() and target.is_file():
-        with sqlite3.connect(target) as conn:
+    if _shared_prices_available(target):
+        with _connect_shared_prices_read_db(target) as conn:
             _ensure_prices_table_schema(conn)
         placeholders = ",".join(["?"] * len(normalized))
         query = f"SELECT date, symbol, stock_splits FROM prices WHERE symbol IN ({placeholders})"
@@ -1167,7 +1240,7 @@ def load_shared_stock_splits_for_symbols(
         query += " AND stock_splits IS NOT NULL ORDER BY date, symbol"
         pivot = _load_shared_metric_pivot(target, query=query, params=params, value_col="stock_splits", symbols=normalized)
         if pivot is not None:
-            return pivot, f"sqlite:{target.as_posix()}"
+            return pivot, shared_prices_storage_label(target)
 
     return None, None
 
@@ -1197,8 +1270,8 @@ def load_shared_market_caps_for_symbols(
     start_text = pd.Timestamp(start_date).normalize().strftime("%Y-%m-%d")
     end_text = pd.Timestamp(end_date).normalize().strftime("%Y-%m-%d") if end_date is not None else None
 
-    if target.exists() and target.is_file():
-        with sqlite3.connect(target) as conn:
+    if _shared_prices_available(target):
+        with _connect_shared_prices_read_db(target) as conn:
             _ensure_prices_table_schema(conn)
         placeholders = ",".join(["?"] * len(normalized))
         query = f"SELECT date, symbol, market_cap FROM prices WHERE symbol IN ({placeholders})"
@@ -1212,7 +1285,7 @@ def load_shared_market_caps_for_symbols(
 
         pivot = _load_shared_metric_pivot(target, query=query, params=params, value_col="market_cap", symbols=normalized)
         if pivot is not None:
-            return pivot, f"sqlite:{target.as_posix()}"
+            return pivot, shared_prices_storage_label(target)
 
     return None, None
 
@@ -1231,10 +1304,10 @@ def load_financial_market_series(
     start_text = pd.Timestamp(start_date).normalize().strftime("%Y-%m-%d")
     end_text = pd.Timestamp(end_date).normalize().strftime("%Y-%m-%d") if end_date is not None else None
 
-    if not target.exists() or not target.is_file():
+    if not _shared_prices_available(target):
         return None, None
 
-    with sqlite3.connect(target) as conn:
+    with _connect_shared_prices_read_db(target) as conn:
         _ensure_prices_table_schema(conn) # Ensure table exists
         query = f"SELECT date, value FROM {dataset} WHERE series_id = ?"
         params: list[object] = [series_id]
@@ -1261,7 +1334,7 @@ def load_financial_market_series(
 
     s = pd.Series(raw["value"].values, index=raw["date"].dt.normalize(), name=series_id)
     s = s[~s.index.duplicated(keep="last")]
-    return s if not s.empty else None, f"sqlite:{target.as_posix()}"
+    return s if not s.empty else None, shared_prices_storage_label(target)
 
 
 def load_financial_market_frame(
@@ -1281,10 +1354,10 @@ def load_financial_market_frame(
     start_text = pd.Timestamp(start_date).normalize().strftime("%Y-%m-%d")
     end_text = pd.Timestamp(end_date).normalize().strftime("%Y-%m-%d") if end_date is not None else None
 
-    if not target.exists() or not target.is_file():
+    if not _shared_prices_available(target):
         return None, None
 
-    with sqlite3.connect(target) as conn:
+    with _connect_shared_prices_read_db(target) as conn:
         _ensure_prices_table_schema(conn) # Ensure table exists
         placeholders = ",".join(["?"] * len(series_ids))
         query = f"SELECT date, series_id, value FROM {dataset} WHERE series_id IN ({placeholders})"
@@ -1315,7 +1388,7 @@ def load_financial_market_frame(
     if not columns:
         return None, None
     pivot = pivot[columns].dropna(how="all")
-    return pivot if not pivot.empty else None, f"sqlite:{target.as_posix()}"
+    return pivot if not pivot.empty else None, shared_prices_storage_label(target)
 
 
 def main() -> int:

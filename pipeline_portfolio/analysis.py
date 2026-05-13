@@ -14,6 +14,8 @@ import pandas as pd
 from pipeline_common.notebook_data import load_sp500_components
 from pipeline_common.shared_fundamentals import derive_shared_fundamental_metrics
 from pipeline_common.shared_sp500_prices_sql import (
+    _connect_shared_prices_read_db,
+    _shared_prices_available,
     load_shared_close_prices_for_symbols,
     load_shared_market_caps_for_symbols,
     shared_prices_sqlite_path,
@@ -179,10 +181,10 @@ def _ensure_remote_portfolio_db() -> None:
 def _get_db_max_date(shared_db: Path | str | None = None) -> pd.Timestamp:
     """데이터베이스에서 실제 가격 데이터가 있는 가장 최신 날짜를 조회합니다 (Read-only)."""
     target = _shared_db_path(shared_db)
-    if not target.exists():
+    if not _shared_prices_available(target):
         return pd.Timestamp.today().normalize()
     try:
-        with sqlite3.connect(target) as conn:
+        with _connect_shared_prices_read_db(target) as conn:
             res = conn.execute("SELECT MAX(date) FROM prices").fetchone()
             if res and res[0]:
                 return pd.Timestamp(res[0]).normalize()
@@ -508,7 +510,7 @@ def _latest_news_signals(
         ORDER BY publish_date DESC, id DESC
     """
     params: list[object] = [*tickers, start_date]
-    with sqlite3.connect(target) as conn:
+    with _connect_shared_prices_read_db(target) as conn:
         frame = pd.read_sql_query(query, conn, params=params)
     if frame.empty:
         return pd.DataFrame(

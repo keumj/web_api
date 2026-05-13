@@ -56,6 +56,72 @@ def macro_db_path(path: str | os.PathLike[str] | None = None) -> Path:
     return Path(path) if path else DEFAULT_MACRO_DB_PATH
 
 
+def _env_first(*names: str) -> str:
+    for name in names:
+        value = str(os.getenv(name, "")).strip()
+        if value:
+            return value
+    return ""
+
+
+def macro_database_url() -> str:
+    return _env_first("KEUMJ_MACRO_DATABASE_URL", "KEUMJ_MACRO_TURSO_DATABASE_URL", "TURSO_MACRO_DATABASE_URL")
+
+
+def macro_database_auth_token() -> str:
+    return _env_first("KEUMJ_MACRO_DATABASE_AUTH_TOKEN", "KEUMJ_MACRO_TURSO_AUTH_TOKEN", "TURSO_MACRO_AUTH_TOKEN")
+
+
+def using_remote_macro_db() -> bool:
+    return bool(macro_database_url())
+
+
+def macro_storage_label(path: str | os.PathLike[str] | None = None) -> str:
+    url = macro_database_url()
+    if url:
+        return f"turso:{url}"
+    return f"macro_sqlite:{macro_db_path(path).as_posix()}"
+
+
+class _RemoteConnectionProxy:
+    _keumj_remote_libsql = True
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def __getattr__(self, name: str):
+        return getattr(self._conn, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        close = getattr(self._conn, "close", None)
+        if close is not None:
+            close()
+
+
+def _connect_macro_read_db(path: str | os.PathLike[str] | None = None):
+    url = macro_database_url()
+    if url:
+        try:
+            import libsql
+        except ImportError as exc:
+            raise RuntimeError(
+                "KEUMJ_MACRO_DATABASE_URL is set, but the 'libsql' package is not installed."
+            ) from exc
+        kwargs: dict[str, str] = {"database": url}
+        token = macro_database_auth_token()
+        if token:
+            kwargs["auth_token"] = token
+        return _RemoteConnectionProxy(libsql.connect(**kwargs))
+    return sqlite3.connect(macro_db_path(path))
+
+
+def _macro_db_available(path: str | os.PathLike[str] | None = None) -> bool:
+    return using_remote_macro_db() or macro_db_path(path).is_file()
+
+
 def fred_api_key() -> str:
     key = str(os.getenv("FRED_API_KEY", "")).strip()
     if key:
@@ -73,6 +139,8 @@ def fred_api_key() -> str:
 
 
 def ensure_macro_schema(conn: sqlite3.Connection) -> None:
+    if getattr(conn, "_keumj_remote_libsql", False) or conn.__class__.__module__.split(".", 1)[0] == "libsql":
+        return
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS macro_series (
@@ -153,9 +221,9 @@ def read_local_series(csv_path: str | os.PathLike[str], *, series_id: str, start
 
 def read_macro_series(series_id: str, *, start_date: str | pd.Timestamp, db_path: str | os.PathLike[str] | None = None) -> tuple[pd.Series | None, str | None]:
     path = macro_db_path(db_path)
-    if not path.is_file():
+    if not _macro_db_available(db_path):
         return None, None
-    with sqlite3.connect(path) as conn:
+    with _connect_macro_read_db(db_path) as conn:
         ensure_macro_schema(conn)
         raw = pd.read_sql_query(
             "SELECT date, value FROM macro_series WHERE series_id = ? AND date >= ? ORDER BY date",
@@ -170,16 +238,16 @@ def read_macro_series(series_id: str, *, start_date: str | pd.Timestamp, db_path
     if raw.empty:
         return None, None
     series = pd.Series(raw["value"].values, index=raw["date"].dt.normalize(), name=series_id)
-    return series, f"macro_sqlite:{path.as_posix()}"
+    return series, macro_storage_label(path)
 
 
 def read_macro_frame(series_ids: list[str], *, start_date: str | pd.Timestamp, db_path: str | os.PathLike[str] | None = None) -> tuple[pd.DataFrame | None, str | None]:
     path = macro_db_path(db_path)
-    if not path.is_file() or not series_ids:
+    if not _macro_db_available(db_path) or not series_ids:
         return None, None
     placeholders = ",".join(["?"] * len(series_ids))
     params: list[object] = [*series_ids, pd.Timestamp(start_date).normalize().strftime("%Y-%m-%d")]
-    with sqlite3.connect(path) as conn:
+    with _connect_macro_read_db(db_path) as conn:
         ensure_macro_schema(conn)
         raw = pd.read_sql_query(
             f"SELECT date, series_id, value FROM macro_series WHERE series_id IN ({placeholders}) AND date >= ? ORDER BY date, series_id",
@@ -196,4 +264,4 @@ def read_macro_frame(series_ids: list[str], *, start_date: str | pd.Timestamp, d
     frame = raw.pivot_table(index="date", columns="series_id", values="value", aggfunc="last").sort_index()
     frame.index = pd.to_datetime(frame.index).normalize()
     frame = frame.reindex(columns=series_ids)
-    return frame if not frame.empty else None, f"macro_sqlite:{path.as_posix()}"
+    return frame if not frame.empty else None, macro_storage_label(path)

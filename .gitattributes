@@ -1,1 +1,1 @@
-data/sp500_shared_db/sp500_shared_prices.sqlite filter=lfs diff=lfs merge=lfs -text
+# Git LFS is intentionally not used for this repository.

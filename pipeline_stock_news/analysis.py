@@ -11,7 +11,7 @@ import re
 import numpy as np
 import pandas as pd
 
-from pipeline_common.shared_sp500_prices_sql import shared_prices_sqlite_path
+from pipeline_common.shared_sp500_prices_sql import _connect_shared_prices_read_db, shared_prices_sqlite_path
 
 DEFAULT_LOOKBACK_DAYS = 45
 DEFAULT_EVENT_KEYWORDS = "earnings"
@@ -255,7 +255,7 @@ def _db_path(db_path: Path | str | None = None) -> Path:
 
 
 def _connect(db_path: Path | str | None = None) -> sqlite3.Connection:
-    return sqlite3.connect(_db_path(db_path))
+    return _connect_shared_prices_read_db(_db_path(db_path))
 
 
 def _split_keywords(value: str | list[str] | tuple[str, ...] | None) -> list[str]:

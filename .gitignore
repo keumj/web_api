@@ -32,6 +32,7 @@ data/sp500_shares.csv
 data/price_cache/*.csv
 data/technical_ohlcv_cache/*.csv
 data/portfolio/**
+data/sp500_shared_db/sp500_shared_prices.sqlite
 data/macro_prices.sqlite
 
 # Keep essential config files if any (example)
