@@ -71,6 +71,11 @@ def _normalize(frame: pd.DataFrame) -> pd.DataFrame:
     clean = frame.apply(pd.to_numeric, errors="coerce").dropna(how="all")
     if clean.empty:
         return clean
+    common = clean.dropna(how="any")
+    if not common.empty:
+        base_date = common.index[0]
+        base = common.iloc[0].replace(0, np.nan)
+        return clean.loc[base_date:].divide(base, axis="columns") * 100.0
     out = clean.copy()
     for col in out.columns:
         series = out[col].dropna()
@@ -89,8 +94,8 @@ def _chart_to_base64(fig) -> str:
 
 
 def _line_chart(frame: pd.DataFrame, title: str, *, ylabel: str = "", normalize: bool = False, tail: int = 252) -> str:
-    data = _normalize(frame) if normalize else frame.copy()
-    data = data.tail(tail).apply(pd.to_numeric, errors="coerce").dropna(how="all")
+    data = frame.tail(tail).apply(pd.to_numeric, errors="coerce").dropna(how="all")
+    data = _normalize(data) if normalize else data
     fig, ax = plt.subplots(figsize=(7.2, 3.3))
     if data.empty:
         ax.text(0.5, 0.5, "No data", ha="center", va="center")
@@ -119,10 +124,10 @@ def _dual_axis_line_chart(
     normalize_right: bool = False,
     tail: int = 252,
 ) -> str:
-    left = _normalize(left_frame) if normalize_left else left_frame.copy()
-    right = _normalize(right_frame) if normalize_right else right_frame.copy()
-    left = left.tail(tail).apply(pd.to_numeric, errors="coerce").dropna(how="all")
-    right = right.tail(tail).apply(pd.to_numeric, errors="coerce").dropna(how="all")
+    left = left_frame.tail(tail).apply(pd.to_numeric, errors="coerce").dropna(how="all")
+    right = right_frame.tail(tail).apply(pd.to_numeric, errors="coerce").dropna(how="all")
+    left = _normalize(left) if normalize_left else left
+    right = _normalize(right) if normalize_right else right
     fig, ax_left = plt.subplots(figsize=(7.2, 3.3))
     ax_right = ax_left.twinx()
     if left.empty and right.empty:
@@ -345,6 +350,7 @@ def _page_charts(page: str, dashboard: MacroDashboard) -> str:
         comm = dashboard.commodity_series
         returns_60d = [float((comm[c].dropna().iloc[-1] / comm[c].dropna().iloc[-61] - 1.0) * 100.0) if len(comm[c].dropna()) > 60 else np.nan for c in comm.columns]
         charts = [
+            ("DXY 원지수", _line_chart(dashboard.market_series[["DXY"]], "DXY (FRED DTWEXBGS)", ylabel="index level")),
             ("달러와 원자재", _line_chart(pd.concat([dashboard.market_series[["DXY"]], comm], axis=1), "DXY and Commodities Base 100", normalize=True)),
             ("원자재 60D 수익률", _bar_chart(comm.columns.astype(str).tolist(), returns_60d, "Commodity 60D Returns", ylabel="%")),
         ]
