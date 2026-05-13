@@ -65,10 +65,24 @@ def _env_first(*names: str) -> str:
 
 
 def macro_database_url() -> str:
+    try:
+        from app.settings import settings
+
+        if settings.macro_database_url:
+            return settings.macro_database_url
+    except Exception:
+        pass
     return _env_first("KEUMJ_MACRO_DATABASE_URL", "KEUMJ_MACRO_TURSO_DATABASE_URL", "TURSO_MACRO_DATABASE_URL")
 
 
 def macro_database_auth_token() -> str:
+    try:
+        from app.settings import settings
+
+        if settings.macro_database_auth_token:
+            return settings.macro_database_auth_token
+    except Exception:
+        pass
     return _env_first("KEUMJ_MACRO_DATABASE_AUTH_TOKEN", "KEUMJ_MACRO_TURSO_AUTH_TOKEN", "TURSO_MACRO_AUTH_TOKEN")
 
 
@@ -116,6 +130,15 @@ def _connect_macro_read_db(path: str | os.PathLike[str] | None = None):
             kwargs["auth_token"] = token
         return _RemoteConnectionProxy(libsql.connect(**kwargs))
     return sqlite3.connect(macro_db_path(path))
+
+
+def explain_macro_auth_error(exc: Exception) -> RuntimeError:
+    err = RuntimeError(
+        "Macro Turso DB rejected the connection. Set KEUMJ_MACRO_DATABASE_AUTH_TOKEN "
+        "in Render if this database requires a token."
+    )
+    err.__cause__ = exc
+    return err
 
 
 def _macro_db_available(path: str | os.PathLike[str] | None = None) -> bool:
@@ -223,13 +246,18 @@ def read_macro_series(series_id: str, *, start_date: str | pd.Timestamp, db_path
     path = macro_db_path(db_path)
     if not _macro_db_available(db_path):
         return None, None
-    with _connect_macro_read_db(db_path) as conn:
-        ensure_macro_schema(conn)
-        raw = pd.read_sql_query(
-            "SELECT date, value FROM macro_series WHERE series_id = ? AND date >= ? ORDER BY date",
-            conn,
-            params=[series_id, pd.Timestamp(start_date).normalize().strftime("%Y-%m-%d")],
-        )
+    try:
+        with _connect_macro_read_db(db_path) as conn:
+            ensure_macro_schema(conn)
+            raw = pd.read_sql_query(
+                "SELECT date, value FROM macro_series WHERE series_id = ? AND date >= ? ORDER BY date",
+                conn,
+                params=[series_id, pd.Timestamp(start_date).normalize().strftime("%Y-%m-%d")],
+            )
+    except Exception as exc:
+        if "401" in str(exc) or "Unauthorized" in str(exc) or "empty JWT token" in str(exc):
+            raise explain_macro_auth_error(exc)
+        raise
     if raw.empty:
         return None, None
     raw["date"] = pd.to_datetime(raw["date"], errors="coerce")
@@ -247,13 +275,18 @@ def read_macro_frame(series_ids: list[str], *, start_date: str | pd.Timestamp, d
         return None, None
     placeholders = ",".join(["?"] * len(series_ids))
     params: list[object] = [*series_ids, pd.Timestamp(start_date).normalize().strftime("%Y-%m-%d")]
-    with _connect_macro_read_db(db_path) as conn:
-        ensure_macro_schema(conn)
-        raw = pd.read_sql_query(
-            f"SELECT date, series_id, value FROM macro_series WHERE series_id IN ({placeholders}) AND date >= ? ORDER BY date, series_id",
-            conn,
-            params=params,
-        )
+    try:
+        with _connect_macro_read_db(db_path) as conn:
+            ensure_macro_schema(conn)
+            raw = pd.read_sql_query(
+                f"SELECT date, series_id, value FROM macro_series WHERE series_id IN ({placeholders}) AND date >= ? ORDER BY date, series_id",
+                conn,
+                params=params,
+            )
+    except Exception as exc:
+        if "401" in str(exc) or "Unauthorized" in str(exc) or "empty JWT token" in str(exc):
+            raise explain_macro_auth_error(exc)
+        raise
     if raw.empty:
         return None, None
     raw["date"] = pd.to_datetime(raw["date"], errors="coerce")

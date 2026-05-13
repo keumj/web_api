@@ -113,10 +113,24 @@ def _env_first(*names: str) -> str:
 
 
 def shared_prices_database_url() -> str:
+    try:
+        from app.settings import settings
+
+        if settings.sp500_database_url:
+            return settings.sp500_database_url
+    except Exception:
+        pass
     return _env_first("KEUMJ_SP500_DATABASE_URL", "KEUMJ_SP500_TURSO_DATABASE_URL", "TURSO_SP500_DATABASE_URL")
 
 
 def shared_prices_database_auth_token() -> str:
+    try:
+        from app.settings import settings
+
+        if settings.sp500_database_auth_token:
+            return settings.sp500_database_auth_token
+    except Exception:
+        pass
     return _env_first("KEUMJ_SP500_DATABASE_AUTH_TOKEN", "KEUMJ_SP500_TURSO_AUTH_TOKEN", "TURSO_SP500_AUTH_TOKEN")
 
 
@@ -166,6 +180,15 @@ def _connect_shared_prices_read_db(target: Path | str | None = None):
         return _RemoteConnectionProxy(libsql.connect(**kwargs))
     path = Path(target) if target is not None else shared_prices_sqlite_path()
     return sqlite3.connect(path)
+
+
+def explain_shared_prices_auth_error(exc: Exception) -> RuntimeError:
+    err = RuntimeError(
+        "S&P500 Turso DB rejected the connection. Set KEUMJ_SP500_DATABASE_AUTH_TOKEN "
+        "in Render if this database requires a token."
+    )
+    err.__cause__ = exc
+    return err
 
 
 def _shared_prices_available(target: Path | str | None = None) -> bool:

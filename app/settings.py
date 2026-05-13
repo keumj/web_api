@@ -67,6 +67,26 @@ class Settings:
     portfolio_db_root: Path = Path(os.getenv("KEUMJ_PORTFOLIO_DB_DIR", "data/portfolio"))
     app_database_url: str = _env_first("KEUMJM_DATABASE_URL", "TURSO_DATABASE_URL")
     app_database_auth_token: str = _env_first("KEUMJM_DATABASE_AUTH_TOKEN", "TURSO_AUTH_TOKEN")
+    sp500_database_url: str = _env_first(
+        "KEUMJ_SP500_DATABASE_URL",
+        "KEUMJ_SP500_TURSO_DATABASE_URL",
+        "TURSO_SP500_DATABASE_URL",
+    )
+    sp500_database_auth_token: str = _env_first(
+        "KEUMJ_SP500_DATABASE_AUTH_TOKEN",
+        "KEUMJ_SP500_TURSO_AUTH_TOKEN",
+        "TURSO_SP500_AUTH_TOKEN",
+    )
+    macro_database_url: str = _env_first(
+        "KEUMJ_MACRO_DATABASE_URL",
+        "KEUMJ_MACRO_TURSO_DATABASE_URL",
+        "TURSO_MACRO_DATABASE_URL",
+    )
+    macro_database_auth_token: str = _env_first(
+        "KEUMJ_MACRO_DATABASE_AUTH_TOKEN",
+        "KEUMJ_MACRO_TURSO_AUTH_TOKEN",
+        "TURSO_MACRO_AUTH_TOKEN",
+    )
 
     def parsed_allowed_networks(self):
         return tuple(ip_network(cidr, strict=False) for cidr in self.allowed_cidrs)
