@@ -349,10 +349,21 @@ def _page_charts(page: str, dashboard: MacroDashboard) -> str:
     elif page == "dollar":
         comm = dashboard.commodity_series
         returns_60d = [float((comm[c].dropna().iloc[-1] / comm[c].dropna().iloc[-61] - 1.0) * 100.0) if len(comm[c].dropna()) > 60 else np.nan for c in comm.columns]
+        sensitivity = dashboard.dollar_sensitivity
+        commodity_sensitivity = sensitivity[sensitivity["대상"].astype(str).isin(comm.columns.astype(str))]
         charts = [
             ("DXY 원지수", _line_chart(dashboard.market_series[["DXY"]], "DXY (FRED DTWEXBGS)", ylabel="index level")),
             ("달러와 원자재", _line_chart(pd.concat([dashboard.market_series[["DXY"]], comm], axis=1), "DXY and Commodities Base 100", normalize=True)),
             ("원자재 60D 수익률", _bar_chart(comm.columns.astype(str).tolist(), returns_60d, "Commodity 60D Returns", ylabel="%")),
+            (
+                "달러-원자재 60D 상관",
+                _horizontal_bar_chart(
+                    commodity_sensitivity["대상"].astype(str).tolist(),
+                    pd.to_numeric(commodity_sensitivity["60D 상관"], errors="coerce").tolist(),
+                    "DXY / Commodity 60D Correlation",
+                    xlabel="corr",
+                ),
+            ),
         ]
     else:
         playbook = dashboard.sector_playbook
