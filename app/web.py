@@ -189,6 +189,7 @@ def inject_busy_cursor_overlay(page: str) -> str:
         if (action.includes("/stock-news/run-")) return true;
         if (action.includes("/run_virtual_trade")) return true;
         if (action.includes("/run_refresh")) return true;
+        if (action.includes("/run_turso_refresh/")) return true;
         return false;
       };
 

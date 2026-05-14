@@ -30,7 +30,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/refresh",
         "/refresh_status",
         "/run_refresh",
+        "/run_turso_refresh",
         "/api/refresh",
+        "/api/turso-refresh",
     )
     EXEMPT_PREFIXES = (
         "/",

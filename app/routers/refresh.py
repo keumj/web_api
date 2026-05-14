@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from app.form import read_form
-from app.services import auth_service, portfolio_service, refresh_service
+from app.services import auth_service, portfolio_service, refresh_service, turso_refresh_service
 
 router = APIRouter()
 
@@ -62,6 +62,19 @@ async def run_refresh(request: Request) -> Response:
         end_date=form.get("end_date") or None,
         admin=True,
     ))
+
+
+@router.post("/run_turso_refresh/{target}")
+def run_turso_refresh(target: str, request: Request) -> RedirectResponse:
+    _require_admin(request)
+    turso_refresh_service.start(target)
+    return RedirectResponse("/", status_code=303)
+
+
+@router.get("/api/turso-refresh/status")
+def turso_refresh_status(request: Request) -> dict[str, object]:
+    _require_admin(request)
+    return turso_refresh_service.status()
 
 
 @router.get("/api/refresh/jobs")

@@ -1078,7 +1078,7 @@ def _record_run(status: str, mode: str, counts: JobCounts, message: str) -> None
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Incrementally refresh Turso calculation DBs.")
     parser.add_argument("--mode", choices=["direct", "upload-local"], default="direct")
-    parser.add_argument("--target", choices=["all", "sp500", "macro"], default="all")
+    parser.add_argument("--target", choices=["all", "sp500", "prices", "fundamentals", "news", "macro"], default="all")
     parser.add_argument("--symbols-csv", default=str(DEFAULT_COMPONENTS_CSV))
     parser.add_argument("--start-date", default=DEFAULT_START_DATE)
     parser.add_argument("--chunk-size", type=int, default=50)
@@ -1102,13 +1102,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    os.environ["KEUMJ_TURSO_EMBEDDED_REPLICA"] = "false"
     try:
         price_rows = 0
         fundamental_rows = 0
         news_rows = 0
         macro_rows = 0
         if args.mode == "direct":
-            if args.target in {"all", "sp500"}:
+            if args.target in {"all", "sp500", "prices"}:
                 price_rows = refresh_prices_direct(
                     symbols_csv=Path(args.symbols_csv),
                     start_date=str(args.start_date),
@@ -1117,6 +1118,7 @@ def main(argv: list[str] | None = None) -> int:
                     pause_seconds=float(args.pause_seconds),
                     overlap_days=int(args.overlap_days),
                 )
+            if args.target in {"all", "sp500", "fundamentals"}:
                 fundamental_rows = refresh_fundamentals_direct(
                     symbols_csv=Path(args.symbols_csv),
                     limit_per_symbol=int(args.fundamental_limit_per_symbol),
@@ -1126,6 +1128,7 @@ def main(argv: list[str] | None = None) -> int:
                     symbols_csv=Path(args.symbols_csv),
                     limit_per_symbol=int(args.fundamental_limit_per_symbol),
                 )
+            if args.target in {"all", "sp500", "news"}:
                 news_rows = refresh_news_direct(
                     symbols_csv=Path(args.symbols_csv),
                     backfill_days=int(args.news_backfill_days),
@@ -1139,12 +1142,14 @@ def main(argv: list[str] | None = None) -> int:
                     rewrite_series=_parse_series_ids(str(args.macro_rewrite_series)),
                 )
         else:
-            if args.target in {"all", "sp500"}:
+            if args.target in {"all", "sp500", "prices"}:
                 price_rows = upload_local_prices_to_turso(
                     local_db=Path(args.local_sp500_db),
                     overlap_days=int(args.overlap_days),
                 )
+            if args.target in {"all", "sp500", "fundamentals"}:
                 fundamental_rows = upload_local_fundamentals_to_turso(local_db=Path(args.local_sp500_db))
+            if args.target in {"all", "sp500", "news"}:
                 news_rows = upload_local_news_to_turso(
                     local_db=Path(args.local_sp500_db),
                     overlap_days=int(args.overlap_days),

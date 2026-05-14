@@ -85,6 +85,10 @@ def _normalize(frame: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _bp_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    return frame.apply(pd.to_numeric, errors="coerce") * 100.0
+
+
 def _chart_to_base64(fig) -> str:
     buf = io.BytesIO()
     fig.tight_layout()
@@ -306,18 +310,19 @@ def _page_charts(page: str, dashboard: MacroDashboard) -> str:
                 "S&P 500과 10Y-2Y 커브",
                 _dual_axis_line_chart(
                     dashboard.market_series[["S&P 500"]],
-                    dashboard.rate_series[["10Y-2Y"]],
+                    _bp_frame(dashboard.rate_series[["10Y-2Y"]]),
                     "Equity Trend and Yield Curve",
                     left_ylabel="S&P 500 base 100",
-                    right_ylabel="10Y-2Y %p",
+                    right_ylabel="10Y-2Y bp",
                     normalize_left=True,
                 ),
             ),
         ]
     elif page == "rates":
+        maturity_spreads_bp = _bp_frame(dashboard.rate_series[["10Y-3M", "10Y-2Y", "5Y-2Y", "30Y-10Y"]])
         charts = [
             ("미국 국채 일드커브", _yield_curve_chart(dashboard.yield_curve_series, "Treasury Yield Curves (Quarter-end + Latest)")),
-            ("만기간 스프레드", _line_chart(dashboard.rate_series[["10Y-3M", "10Y-2Y", "5Y-2Y", "30Y-10Y"]], "Maturity Spreads", ylabel="%p")),
+            ("만기간 스프레드", _line_chart(maturity_spreads_bp, "Maturity Spreads", ylabel="bp")),
         ]
     elif page == "risk":
         risk = dashboard.risk_series
@@ -338,11 +343,11 @@ def _page_charts(page: str, dashboard: MacroDashboard) -> str:
             (
                 "신용 스트레스: 회사채 스프레드",
                 _dual_axis_line_chart(
-                    dashboard.stress_series[["IG OAS", "Baa-AAA"]],
-                    dashboard.stress_series[["HY OAS"]],
+                    _bp_frame(dashboard.stress_series[["IG OAS", "Baa-AAA"]]),
+                    _bp_frame(dashboard.stress_series[["HY OAS"]]),
                     "Credit Spreads",
-                    left_ylabel="IG / Baa-AAA %p",
-                    right_ylabel="HY OAS %p",
+                    left_ylabel="IG / Baa-AAA bp",
+                    right_ylabel="HY OAS bp",
                 ),
             ),
         ]

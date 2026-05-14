@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.routers.auth import _safe_next, auth_panel
-from app.services import auth_service, refresh_state
+from app.services import auth_service, refresh_state, turso_refresh_service
 from app.settings import settings
 from app.web import shell
 
@@ -96,6 +96,34 @@ def _refresh_notice_card(*, visible: bool) -> str:
         f"exit={exit_code}"
     )
 
+    turso_status = turso_refresh_service.status()
+    turso_running = bool(turso_status.get("running") or turso_status.get("status") == "running")
+    disabled = " disabled" if turso_running else ""
+    turso_buttons = "".join(
+        f"""
+          <form method="post" action="/run_turso_refresh/{html.escape(target)}">
+            <button class="service-button secondary" type="submit"{disabled}>{html.escape(label)}</button>
+          </form>
+        """
+        for target, label in (
+            ("prices", "가격/시총"),
+            ("fundamentals", "펀더멘털"),
+            ("news", "뉴스"),
+            ("macro", "거시"),
+            ("sp500", "S&P500 전체"),
+            ("all", "전체"),
+        )
+    )
+    turso_exit = turso_status.get("exit_code") if turso_status.get("exit_code") is not None else "-"
+    turso_meta = (
+        f"상태={turso_status.get('status') or 'idle'} / "
+        f"대상={turso_status.get('target_label') or '-'} / "
+        f"시작={turso_status.get('started_at') or '-'} / "
+        f"종료={turso_status.get('finished_at') or '-'} / "
+        f"exit={turso_exit} / "
+        f"log={turso_status.get('log_path') or '-'}"
+    )
+
     return f"""
       <div class="service-card" style="background:{tone}; border-color:{border};">
         <h3 style="margin:0 0 6px;">데이터 갱신 알림</h3>
@@ -106,6 +134,11 @@ def _refresh_notice_card(*, visible: bool) -> str:
           <div><strong>{html.escape(headline)}</strong></div>
           <div class="service-muted">{html.escape(run_meta)}</div>
           {error_html}
+          <div>
+            <div class="service-muted">예비 Turso 직접 갱신</div>
+            <div class="service-actions" style="margin-top:6px;">{turso_buttons}</div>
+            <div class="service-muted" style="margin-top:6px;">{html.escape(turso_meta)}</div>
+          </div>
           <div>
             <div class="service-muted">SQLite Git 상태</div>
             <ul style="margin:4px 0 0 18px; padding:0;">{git_html}</ul>

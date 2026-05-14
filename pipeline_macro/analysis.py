@@ -529,7 +529,7 @@ def _rate_diagnostics_table(
             "해석": "10Y-3M은 단기 정책금리와 장기 성장 기대의 차이를 봅니다. 깊은 역전은 과거 경기 둔화 구간에서 자주 나타났기 때문에, 위험자산 비중 확대 전에 신용·고용·이익 지표 확인이 필요합니다.",
         },
     ]
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows).rename(columns={"현재": "현재(금리 %, 스프레드 bp)"})
 
 
 def _risk_breadth_table(prices: pd.DataFrame, spx: pd.Series) -> pd.DataFrame:
@@ -640,13 +640,22 @@ def _risk_stress_table(vix: pd.Series, ig_oas: pd.Series, hy_oas: pd.Series, baa
         change_20d = _change(series, 20)
         change_60d = _change(series, 60)
         pct = _percentile_rank(series)
+        display_level = level
+        display_change_20d = change_20d
+        display_change_60d = change_60d
+        display_unit = unit
+        if unit == "%p":
+            display_level = level * 100.0 if np.isfinite(level) else np.nan
+            display_change_20d = change_20d * 100.0 if np.isfinite(change_20d) else np.nan
+            display_change_60d = change_60d * 100.0 if np.isfinite(change_60d) else np.nan
+            display_unit = "bp"
         rows.append(
             {
                 "지표": name,
-                "현재": level,
-                "단위": unit,
-                "20D 변화": change_20d,
-                "60D 변화": change_60d,
+                "현재": display_level,
+                "단위": display_unit,
+                "20D 변화": display_change_20d,
+                "60D 변화": display_change_60d,
                 "백분위": pct,
                 "상태": _stress_state("VIX" if name == "VIX" else "Credit", level, change_20d, pct),
                 "해석": note,
@@ -1258,7 +1267,7 @@ def build_macro_dashboard(
             {"지표": "S&P 500 60D 수익률", "현재": risk_return_60d, "단위": "%", "해석": "분기 단위의 중기 추세를 봅니다. 20D는 좋지만 60D가 약하면 단기 반등일 수 있고, 둘 다 강하면 위험선호가 더 견고하다고 봅니다."},
             {"지표": "20D 연율 변동성", "현재": realized_vol_20d, "단위": "연 %", "해석": "최근 일간 수익률의 흔들림을 연율화한 값입니다. 높을수록 같은 주식 비중이라도 포트폴리오 손익 변동이 커지므로 포지션 크기와 손실 한도를 보수적으로 둡니다."},
             {"지표": "현재 낙폭", "현재": _latest_value(drawdown), "단위": "%", "해석": "최근 고점 대비 얼마나 내려와 있는지입니다. 낙폭이 깊으면 가격 매력은 생길 수 있지만, 회복에는 breadth와 변동성 안정이 같이 필요합니다."},
-            {"지표": "10Y-2Y 스프레드", "현재": _latest_value(curve_10y_2y), "단위": "%p", "해석": "장기 성장 기대와 단기 정책 부담의 차이입니다. 음수이면 정책금리가 장기 성장 기대보다 높다는 뜻이라 경기 둔화와 금융주 마진 압력을 함께 경계합니다."},
+            {"지표": "10Y-2Y 스프레드", "현재": _latest_value(curve_10y_2y) * 100.0, "단위": "bp", "해석": "장기 성장 기대와 단기 정책 부담의 차이입니다. 음수이면 정책금리가 장기 성장 기대보다 높다는 뜻이라 경기 둔화와 금융주 마진 압력을 함께 경계합니다."},
             {"지표": "원자재 바스켓 60D 수익률", "현재": _return_pct((1.0 + commodity_basket).cumprod(), 60), "단위": "%", "해석": "WTI, 금, 은, 구리의 평균 흐름으로 물가 압력과 실물 수요를 함께 봅니다. 에너지·구리 중심 상승이면 경기민감 수요, 금 중심 상승이면 안전자산 수요일 수 있습니다."},
             {"지표": "DXY 60D 변화율", "현재": _return_pct(dxy, 60), "단위": "%", "해석": "달러 강세는 글로벌 유동성 축소, 해외매출 환산 부담, 원자재 가격 압박으로 이어질 수 있습니다. 달러가 빠지면 비미국 자산과 성장주에는 숨통이 트입니다."},
         ]
@@ -1268,12 +1277,13 @@ def build_macro_dashboard(
             {"구간": "2Y", "현재 금리": _latest_value(dgs2), "20D 변화(bp)": _change_bp(dgs2, 20), "60D 변화(bp)": _change_bp(dgs2, 60), "해석": _stock_rate_comment("2Y", _latest_value(dgs2), _change_bp(dgs2, 20), _change_bp(dgs2, 60), dgs2_level=_latest_value(dgs2), dgs10_level=_latest_value(dgs10))},
             {"구간": "10Y", "현재 금리": _latest_value(dgs10), "20D 변화(bp)": _change_bp(dgs10, 20), "60D 변화(bp)": _change_bp(dgs10, 60), "해석": _stock_rate_comment("10Y", _latest_value(dgs10), _change_bp(dgs10, 20), _change_bp(dgs10, 60), dgs2_level=_latest_value(dgs2), dgs10_level=_latest_value(dgs10))},
             {"구간": "30Y", "현재 금리": _latest_value(dgs30), "20D 변화(bp)": _change_bp(dgs30, 20), "60D 변화(bp)": _change_bp(dgs30, 60), "해석": _stock_rate_comment("30Y", _latest_value(dgs30), _change_bp(dgs30, 20), _change_bp(dgs30, 60), dgs2_level=_latest_value(dgs2), dgs10_level=_latest_value(dgs10))},
-            {"구간": "10Y-3M", "현재 금리": _latest_value(curve_10y_3m), "20D 변화(bp)": _change_bp(curve_10y_3m, 20), "60D 변화(bp)": _change_bp(curve_10y_3m, 60), "해석": _stock_spread_comment("10Y-3M", _latest_value(curve_10y_3m), _change_bp(curve_10y_3m, 20), _change_bp(curve_10y_3m, 60))},
-            {"구간": "10Y-2Y", "현재 금리": _latest_value(curve_10y_2y), "20D 변화(bp)": _change_bp(curve_10y_2y, 20), "60D 변화(bp)": _change_bp(curve_10y_2y, 60), "해석": _stock_spread_comment("10Y-2Y", _latest_value(curve_10y_2y), _change_bp(curve_10y_2y, 20), _change_bp(curve_10y_2y, 60))},
-            {"구간": "5Y-2Y", "현재 금리": _latest_value(curve_5y_2y), "20D 변화(bp)": _change_bp(curve_5y_2y, 20), "60D 변화(bp)": _change_bp(curve_5y_2y, 60), "해석": _stock_spread_comment("5Y-2Y", _latest_value(curve_5y_2y), _change_bp(curve_5y_2y, 20), _change_bp(curve_5y_2y, 60))},
-            {"구간": "30Y-10Y", "현재 금리": _latest_value(curve_30y_10y), "20D 변화(bp)": _change_bp(curve_30y_10y, 20), "60D 변화(bp)": _change_bp(curve_30y_10y, 60), "해석": _stock_spread_comment("30Y-10Y", _latest_value(curve_30y_10y), _change_bp(curve_30y_10y, 20), _change_bp(curve_30y_10y, 60))},
+            {"구간": "10Y-3M", "현재 금리": _latest_value(curve_10y_3m) * 100.0, "20D 변화(bp)": _change_bp(curve_10y_3m, 20), "60D 변화(bp)": _change_bp(curve_10y_3m, 60), "해석": _stock_spread_comment("10Y-3M", _latest_value(curve_10y_3m), _change_bp(curve_10y_3m, 20), _change_bp(curve_10y_3m, 60))},
+            {"구간": "10Y-2Y", "현재 금리": _latest_value(curve_10y_2y) * 100.0, "20D 변화(bp)": _change_bp(curve_10y_2y, 20), "60D 변화(bp)": _change_bp(curve_10y_2y, 60), "해석": _stock_spread_comment("10Y-2Y", _latest_value(curve_10y_2y), _change_bp(curve_10y_2y, 20), _change_bp(curve_10y_2y, 60))},
+            {"구간": "5Y-2Y", "현재 금리": _latest_value(curve_5y_2y) * 100.0, "20D 변화(bp)": _change_bp(curve_5y_2y, 20), "60D 변화(bp)": _change_bp(curve_5y_2y, 60), "해석": _stock_spread_comment("5Y-2Y", _latest_value(curve_5y_2y), _change_bp(curve_5y_2y, 20), _change_bp(curve_5y_2y, 60))},
+            {"구간": "30Y-10Y", "현재 금리": _latest_value(curve_30y_10y) * 100.0, "20D 변화(bp)": _change_bp(curve_30y_10y, 20), "60D 변화(bp)": _change_bp(curve_30y_10y, 60), "해석": _stock_spread_comment("30Y-10Y", _latest_value(curve_30y_10y), _change_bp(curve_30y_10y, 20), _change_bp(curve_30y_10y, 60))},
         ]
     )
+    rates = rates.rename(columns={"현재 금리": "현재(금리 %, 스프레드 bp)"})
     rate_diagnostics = _rate_diagnostics_table(
         yields,
         dgs2=dgs2,
