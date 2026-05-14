@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+import libsql_client
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -1010,8 +1011,27 @@ def _query_shared_prices_sqlite(
     *,
     db_path: Path,
 ) -> pd.DataFrame:
-    with _connect_shared_prices_read_db(db_path) as conn:
+    # 여기서부터 복사하세요
+    db_url = os.getenv("TURSO_DATABASE_URL")
+    auth_token = os.getenv("TURSO_AUTH_TOKEN")
+    local_path = f"file:{db_path}"
+
+    try:
+        # 1. Turso 원격 데이터를 로컬 파일로 동기화
+        client = libsql_client.create_client_sync(
+            url=local_path, 
+            sync_url=db_url, 
+            auth_token=auth_token
+        )
+        client.sync() 
+    except Exception as e:
+        print(f"Turso Sync Warning: {e}")
+
+    # 2. 로컬에 생성된 파일에 표준 sqlite3로 연결 (Pandas 경고 해결 및 속도 최적화)
+    with sqlite3.connect(db_path) as conn:
         return pd.read_sql_query(query, conn, params=params)
+    #with _connect_shared_prices_read_db(db_path) as conn:
+    #    return pd.read_sql_query(query, conn, params=params)
 
 
 def load_shared_ohlcv_for_symbol(
