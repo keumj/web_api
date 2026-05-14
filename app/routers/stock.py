@@ -51,7 +51,7 @@ async def run_technical(request: Request) -> RedirectResponse:
 async def run_returns(request: Request) -> RedirectResponse:
     form = await read_form(request)
     session = client_session.resolve(request)
-    page = stock_service.run("returns", form, session_key=session.state_key)
+    page = stock_service.start_returns(form, session_key=session.state_key)
     response = RedirectResponse(f"/stock/{page}", status_code=303)
     client_session.attach_cookie(response, session)
     return response

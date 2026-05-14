@@ -11,25 +11,20 @@ if exist ".venv\Scripts\python.exe" (
   set "PYTHON_EXE=python"
 )
 
-if "%FRED_API_KEY%"=="" (
-  for /f "tokens=2,*" %%A in ('reg query HKCU\Environment /v FRED_API_KEY 2^>nul') do set "FRED_API_KEY=%%B"
-)
-
 echo.
 echo ============================================================
-echo  Keumj Turso data refresh / upload
+echo  Keumj manual update - Part 2
 echo ============================================================
-echo  This updates Turso calculation DBs.
-echo  Local SQLite files are kept local and are not committed.
+echo  Upload incremental data from local SQLite to Turso.
+echo  Run refresh_local_data.cmd first when local data is stale.
 echo.
 echo  Python: %PYTHON_EXE%
 echo.
-echo  [1] Direct refresh: provider -^> Turso ^(S^&P 500 prices/fundamentals/news + macro^)
-echo  [2] Direct refresh: provider -^> Turso ^(S^&P 500 prices/fundamentals/news only^)
-echo  [3] Direct refresh: provider -^> Turso ^(macro only^)
-echo  [4] Fallback upload: local SQLite -^> Turso ^(S^&P 500 prices/fundamentals/news + macro^)
-echo  [5] Fallback upload: local SQLite -^> Turso ^(S^&P 500 prices/fundamentals/news only^)
-echo  [6] Fallback upload: local SQLite -^> Turso ^(macro only^)
+echo  [1] Prices / market caps: local SQLite -^> Turso
+echo  [2] Fundamentals: local SQLite -^> Turso
+echo  [3] News: local SQLite -^> Turso
+echo  [4] Macro: local SQLite -^> Turso
+echo  [5] Upload all local data to Turso
 echo  [0] Exit
 echo.
 
@@ -40,54 +35,48 @@ if not "%~1"=="" (
 )
 
 if "%CHOICE%"=="0" goto :done
-if "%CHOICE%"=="1" goto :direct_all
-if "%CHOICE%"=="2" goto :direct_sp500
-if "%CHOICE%"=="3" goto :direct_macro
-if "%CHOICE%"=="4" goto :upload_all
-if "%CHOICE%"=="5" goto :upload_sp500
-if "%CHOICE%"=="6" goto :upload_macro
-if /i "%CHOICE%"=="direct" goto :direct_all
-if /i "%CHOICE%"=="direct-all" goto :direct_all
-if /i "%CHOICE%"=="direct-sp500" goto :direct_sp500
-if /i "%CHOICE%"=="direct-macro" goto :direct_macro
-if /i "%CHOICE%"=="upload" goto :upload_all
-if /i "%CHOICE%"=="upload-local" goto :upload_all
-if /i "%CHOICE%"=="upload-sp500" goto :upload_sp500
-if /i "%CHOICE%"=="upload-macro" goto :upload_macro
+if "%CHOICE%"=="1" goto :prices
+if "%CHOICE%"=="2" goto :fundamentals
+if "%CHOICE%"=="3" goto :news
+if "%CHOICE%"=="4" goto :macro
+if "%CHOICE%"=="5" goto :all
+if /i "%CHOICE%"=="prices" goto :prices
+if /i "%CHOICE%"=="stock" goto :prices
+if /i "%CHOICE%"=="fundamentals" goto :fundamentals
+if /i "%CHOICE%"=="quarterly" goto :fundamentals
+if /i "%CHOICE%"=="news" goto :news
+if /i "%CHOICE%"=="macro" goto :macro
+if /i "%CHOICE%"=="all" goto :all
 
 echo Invalid option.
 goto :done
 
-:direct_all
-call :run_refresh --mode direct --target all
+:prices
+call :run_upload prices
 goto :status
 
-:direct_sp500
-call :run_refresh --mode direct --target sp500
+:fundamentals
+call :run_upload fundamentals
 goto :status
 
-:direct_macro
-call :run_refresh --mode direct --target macro
+:news
+call :run_upload news
 goto :status
 
-:upload_all
-call :run_refresh --mode upload-local --target all
+:macro
+call :run_upload macro
 goto :status
 
-:upload_sp500
-call :run_refresh --mode upload-local --target sp500
+:all
+call :run_upload all
 goto :status
 
-:upload_macro
-call :run_refresh --mode upload-local --target macro
-goto :status
-
-:run_refresh
+:run_upload
 echo.
 echo ------------------------------------------------------------
-echo Running: scripts\refresh_turso_daily.py %*
+echo Uploading local incremental data to Turso: %~1
 echo ------------------------------------------------------------
-"%PYTHON_EXE%" -u scripts\refresh_turso_daily.py %*
+"%PYTHON_EXE%" -u scripts\refresh_turso_daily.py --mode upload-local --target %~1
 set "EXIT_CODE=%ERRORLEVEL%"
 exit /b %EXIT_CODE%
 
@@ -95,20 +84,14 @@ exit /b %EXIT_CODE%
 echo.
 echo ============================================================
 if "%EXIT_CODE%"=="0" (
-  echo  Turso refresh finished: SUCCESS
+  echo  Turso upload finished: SUCCESS
 ) else (
-  echo  Turso refresh finished: FAILED ^(exit_code=%EXIT_CODE%^)
+  echo  Turso upload finished: FAILED ^(exit_code=%EXIT_CODE%^)
 )
 echo ============================================================
 echo.
-echo Current local Git data status:
+echo Local data file status:
 git status --short data
-echo.
-echo Tip:
-echo   Render Cron default command:
-echo     python scripts/refresh_turso_daily.py
-echo   Local fallback upload:
-echo     refresh_turso_data.cmd upload-local
 echo.
 
 :done

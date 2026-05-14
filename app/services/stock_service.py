@@ -78,6 +78,8 @@ class StockState:
     returns_form: dict[str, str] = field(default_factory=lambda: {"ticker": "AAPL"})
     returns_ctx: object | None = None
     returns_error: str | None = None
+    returns_running: bool = False
+    returns_started_at: str | None = None
     risk_form: dict[str, str] = field(default_factory=lambda: {"ticker": "AAPL"})
     risk_ctx: object | None = None
     risk_error: str | None = None
@@ -149,11 +151,17 @@ def render(page: str, ticker: str | None = None, intent: str | None = None, *, s
             error=state.technical_error,
         )
     elif page == "returns":
+        ticker_note = None
+        if state.returns_running:
+            ticker_note = "수익률비교 계산 중입니다. 잠시 후 자동으로 새로고침되며, 계산이 끝나면 결과가 표시됩니다."
         html = stock_web._html_returns_page(
             state.returns_form,
             ctx=state.returns_ctx,
             error=state.returns_error,
+            ticker_note=ticker_note,
         )
+        if state.returns_running:
+            html = html.replace("</body>", "<script>setTimeout(() => location.reload(), 5000);</script></body>", 1)
     elif page == "risk":
         html = stock_web._html_risk_page(
             state.risk_form,
@@ -216,6 +224,43 @@ def _matching_financials_ctx(state: StockState, ticker: str) -> object | None:
         return None
     fin_ticker = str(getattr(fin_ctx, "ticker", "")).strip().upper()
     return fin_ctx if fin_ticker == ticker else None
+
+
+def start_returns(form: dict[str, str], *, session_key: str = "global") -> str:
+    state = _state(session_key)
+    ticker = _clean_ticker(form.get("ticker", ""))
+    if not ticker:
+        with _states_lock:
+            state.returns_error = "ValueError: Provide an S&P 500 ticker for return analysis."
+            state.returns_running = False
+        return "returns"
+
+    with _states_lock:
+        _sync_ticker(state, ticker)
+        if state.returns_running:
+            return "returns"
+        state.returns_form = {"ticker": ticker}
+        state.returns_error = None
+        state.returns_running = True
+        state.returns_started_at = datetime.utcnow().isoformat(timespec="seconds")
+
+    def worker(local_form: dict[str, str]) -> None:
+        try:
+            ctx = stock_web._run_returns_once(local_form)
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}\n\n{traceback.format_exc(limit=3)}"
+            with _states_lock:
+                state.returns_error = error
+                state.returns_running = False
+            return
+        with _states_lock:
+            state.returns_ctx = ctx
+            state.returns_error = None
+            state.returns_running = False
+
+    thread = threading.Thread(target=worker, args=({"ticker": ticker},), name=f"stock-returns-{session_key}", daemon=True)
+    thread.start()
+    return "returns"
 
 
 def run(action: str, form: dict[str, str], *, session_key: str = "global") -> str:

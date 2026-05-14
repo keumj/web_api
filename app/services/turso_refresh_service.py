@@ -72,7 +72,7 @@ def _build_command(target: str) -> list[str]:
 
 def _record_refresh_state(event: str, *, target: str, exit_code: int | None = None, root: Path) -> None:
     old_sync_interval = os.environ.get("KEUMJ_TURSO_REPLICA_SYNC_SECONDS")
-    os.environ["KEUMJ_TURSO_REPLICA_SYNC_SECONDS"] = "0"
+    os.environ["KEUMJ_TURSO_REPLICA_SYNC_SECONDS"] = "1"
     try:
         refresh_state.record_state(event, source=f"manual-turso:{target}", exit_code=exit_code, root=root)
     finally:

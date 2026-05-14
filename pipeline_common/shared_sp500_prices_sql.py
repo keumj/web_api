@@ -205,7 +205,7 @@ def _maybe_sync_shared_replica(conn, replica_path: Path) -> None:
     sync = getattr(conn, "sync", None)
     if sync is None:
         return
-    interval = max(_env_int("KEUMJ_TURSO_REPLICA_SYNC_SECONDS", 300), 0)
+    interval = max(_env_int("KEUMJ_TURSO_REPLICA_SYNC_SECONDS", 300), 1)
     key = str(replica_path.resolve())
     now = time.monotonic()
     if key in _SHARED_REPLICA_LAST_SYNC and interval > 0 and now - _SHARED_REPLICA_LAST_SYNC[key] < interval:
@@ -235,7 +235,7 @@ def _connect_shared_prices_read_db(target: Path | str | None = None):
             kwargs: dict[str, object] = {
                 "database": str(replica_path),
                 "sync_url": url,
-                "sync_interval": max(_env_int("KEUMJ_TURSO_REPLICA_SYNC_SECONDS", 300), 0),
+                "sync_interval": max(_env_int("KEUMJ_TURSO_REPLICA_SYNC_SECONDS", 300), 1),
             }
             if token:
                 kwargs["auth_token"] = token

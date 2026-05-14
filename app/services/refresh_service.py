@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import html
+import os
 import sqlite3
 import subprocess
+import sys
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -14,6 +16,13 @@ from app.settings import settings
 from app.services import refresh_state
 from app.web import shell
 from pipeline_portfolio import web_gui as portfolio_web
+
+
+TURSO_TARGET_BY_JOB = {
+    "stock": "prices",
+    "quarterly": "fundamentals",
+    "news": "news",
+}
 
 
 @dataclass(frozen=True)
@@ -66,6 +75,17 @@ def _refresh_job_defs() -> list[dict[str, object]]:
     ]
 
 
+def _using_turso_incremental_refresh() -> bool:
+    return bool(settings.sp500_database_url)
+
+
+def _refresh_command(job_id: str) -> list[str]:
+    if _using_turso_incremental_refresh() and job_id in TURSO_TARGET_BY_JOB:
+        script = settings.project_root / "scripts" / "refresh_turso_daily.py"
+        return [sys.executable, "-u", str(script), "--mode", "direct", "--target", TURSO_TARGET_BY_JOB[job_id]]
+    return portfolio_web._refresh_subprocess_command(job_id)
+
+
 JOBS: dict[str, RefreshJob] = {}
 for _job in _refresh_job_defs():
     job_id = str(_job["job_id"])
@@ -74,7 +94,7 @@ for _job in _refresh_job_defs():
         job_id=job_id,
         label=text["label"],
         button_label=text["button_label"],
-        command=portfolio_web._refresh_subprocess_command(job_id),
+        command=_refresh_command(job_id),
         description=text["description"],
     )
 
@@ -133,6 +153,18 @@ def _sqlite_fetchone(path: Path, query: str) -> tuple[object, ...] | None:
         return None
 
 
+def _collect_data_status_with_replica_resync(root_dir: Path) -> dict[str, object]:
+    old_sync_interval = os.environ.get("KEUMJ_TURSO_REPLICA_SYNC_SECONDS")
+    os.environ["KEUMJ_TURSO_REPLICA_SYNC_SECONDS"] = "1"
+    try:
+        return refresh_state.collect_data_status(root_dir)
+    finally:
+        if old_sync_interval is None:
+            os.environ.pop("KEUMJ_TURSO_REPLICA_SYNC_SECONDS", None)
+        else:
+            os.environ["KEUMJ_TURSO_REPLICA_SYNC_SECONDS"] = old_sync_interval
+
+
 def _file_item(
     path: Path,
     *,
@@ -155,6 +187,35 @@ def _file_item(
 
 
 def _stock_snapshot(root_dir: Path) -> dict[str, object]:
+    if _using_turso_incremental_refresh():
+        data = _collect_data_status_with_replica_resync(root_dir)
+        prices = data.get("prices") if isinstance(data.get("prices"), dict) else {}
+        market_cap = data.get("market_cap") if isinstance(data.get("market_cap"), dict) else {}
+        items = [
+            {
+                "label": "Turso 가격 테이블",
+                "path": str(data.get("sp500_source") or "-"),
+                "exists": True,
+                "latest_value": prices.get("latest_date"),
+                "rows": prices.get("rows"),
+                "modified_at": None,
+                "detail": f"symbols={prices.get('symbols') or 0}, table=prices",
+            },
+            {
+                "label": "Turso 시가총액",
+                "path": str(data.get("sp500_source") or "-"),
+                "exists": True,
+                "latest_value": market_cap.get("latest_date"),
+                "rows": market_cap.get("rows"),
+                "modified_at": None,
+                "detail": "table=prices.market_cap",
+            },
+        ]
+        return {
+            "summary": f"Turso 가격 {prices.get('latest_date') or '-'} / 시총 {market_cap.get('latest_date') or '-'}",
+            "items": items,
+        }
+
     data_dir = root_dir / "data"
     metrics_path = data_dir / "sp500_all_metrics_prices.csv"
     market_cap_path = data_dir / "sp500_market_caps.csv"
@@ -172,6 +233,38 @@ def _stock_snapshot(root_dir: Path) -> dict[str, object]:
 
 
 def _quarterly_snapshot(root_dir: Path) -> dict[str, object]:
+    if _using_turso_incremental_refresh():
+        data = _collect_data_status_with_replica_resync(root_dir)
+        quarterly = data.get("quarterly") if isinstance(data.get("quarterly"), dict) else {}
+        snapshot = data.get("snapshot") if isinstance(data.get("snapshot"), dict) else {}
+        items = [
+            {
+                "label": "Turso 분기 재무",
+                "path": str(data.get("sp500_source") or "-"),
+                "exists": True,
+                "latest_value": quarterly.get("latest_fiscal_date"),
+                "rows": quarterly.get("rows"),
+                "modified_at": None,
+                "detail": f"symbols={quarterly.get('symbols') or 0}, updated_at={quarterly.get('updated_at') or '-'}",
+            },
+            {
+                "label": "Turso 재무 스냅샷",
+                "path": str(data.get("sp500_source") or "-"),
+                "exists": True,
+                "latest_value": snapshot.get("latest_as_of_date"),
+                "rows": snapshot.get("rows"),
+                "modified_at": None,
+                "detail": "table=fundamentals_snapshot",
+            },
+        ]
+        return {
+            "summary": (
+                f"Turso 최신 fiscal_date {quarterly.get('latest_fiscal_date') or '-'} / "
+                f"종목 {quarterly.get('symbols') or 0}개 / rows {quarterly.get('rows') or 0}"
+            ),
+            "items": items,
+        }
+
     sqlite_path = root_dir / "data" / "sp500_shared_db" / "sp500_shared_prices.sqlite"
     row = _sqlite_fetchone(
         sqlite_path,
@@ -193,6 +286,23 @@ def _quarterly_snapshot(root_dir: Path) -> dict[str, object]:
 
 
 def _news_snapshot(root_dir: Path) -> dict[str, object]:
+    if _using_turso_incremental_refresh():
+        data = _collect_data_status_with_replica_resync(root_dir)
+        news = data.get("news") if isinstance(data.get("news"), dict) else {}
+        item = {
+            "label": "Turso 뉴스 테이블",
+            "path": str(data.get("sp500_source") or "-"),
+            "exists": True,
+            "latest_value": news.get("latest_publish_date"),
+            "rows": news.get("rows"),
+            "modified_at": None,
+            "detail": f"tickers={news.get('tickers') or 0}, table=news_articles",
+        }
+        return {
+            "summary": f"Turso 최신 publish_date {news.get('latest_publish_date') or '-'} / 기사 {news.get('rows') or 0}건",
+            "items": [item],
+        }
+
     sqlite_path = root_dir / "data" / "sp500_shared_db" / "sp500_shared_prices.sqlite"
     row = _sqlite_fetchone(sqlite_path, "SELECT MAX(publish_date), COUNT(*), COUNT(DISTINCT ticker) FROM news_articles")
     max_publish = str(row[0]) if row and row[0] else None
@@ -263,10 +373,17 @@ def _append(job_id: str, line: str) -> None:
 
 
 def _record_refresh_state(event: str, *, job_id: str, exit_code: int | None = None) -> None:
+    old_sync_interval = os.environ.get("KEUMJ_TURSO_REPLICA_SYNC_SECONDS")
+    os.environ["KEUMJ_TURSO_REPLICA_SYNC_SECONDS"] = "1"
     try:
         refresh_state.record_state(event, source=f"web:{job_id}", exit_code=exit_code)
     except Exception as exc:
         _append(job_id, f"[refresh:{job_id}] state record failed: {type(exc).__name__}: {exc}")
+    finally:
+        if old_sync_interval is None:
+            os.environ.pop("KEUMJ_TURSO_REPLICA_SYNC_SECONDS", None)
+        else:
+            os.environ["KEUMJ_TURSO_REPLICA_SYNC_SECONDS"] = old_sync_interval
 
 
 def _run_job(job: RefreshJob) -> None:
@@ -280,6 +397,7 @@ def _run_job(job: RefreshJob) -> None:
         proc = subprocess.Popen(
             job.command,
             cwd=str(root),
+            env={**os.environ, "KEUMJ_TURSO_EMBEDDED_REPLICA": "false"} if _using_turso_incremental_refresh() else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
