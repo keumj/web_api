@@ -4,12 +4,18 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 
 set "EXIT_CODE=0"
+set "INTERACTIVE=1"
+if not "%~1"=="" set "INTERACTIVE=0"
 
 if exist ".venv\Scripts\python.exe" (
   set "PYTHON_EXE=%CD%\.venv\Scripts\python.exe"
 ) else (
   set "PYTHON_EXE=python"
 )
+
+:menu
+set "EXIT_CODE=0"
+set "CHOICE="
 
 echo.
 echo ============================================================
@@ -49,6 +55,7 @@ if /i "%CHOICE%"=="macro" goto :macro
 if /i "%CHOICE%"=="all" goto :all
 
 echo Invalid option.
+if "%INTERACTIVE%"=="1" goto :menu
 goto :done
 
 :prices
@@ -93,6 +100,10 @@ echo.
 echo Local data file status:
 git status --short data
 echo.
+if "%INTERACTIVE%"=="1" (
+  pause
+  goto :menu
+)
 
 :done
 endlocal & exit /b %EXIT_CODE%

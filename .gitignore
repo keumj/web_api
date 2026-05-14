@@ -51,4 +51,5 @@ tmpgzeyvcrs/
 
 # Local-only data refresh helper.
 refresh_local_data.cmd
+refresh_turso_data.cmd
 scripts/refresh_status.py
