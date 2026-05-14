@@ -20,7 +20,9 @@ from pipeline_common.refresh_sp500_shared_prices import (  # noqa: E402
     _build_market_cap_frame_from_latest_shares,
     _download_shares_histories,
     _download_symbol_frames,
+    _infer_share_histories_from_existing_market_caps,
     _market_cap_wide_to_long,
+    _overlay_fresh_on_existing,
     _read_symbol_list,
     _share_histories_to_wide,
 )
@@ -413,6 +415,39 @@ def _frames_to_close_metrics_wide(frames: dict[str, pd.DataFrame]) -> pd.DataFra
     return out.dropna(how="all")
 
 
+def _existing_market_caps_wide(conn, *, start_date: str) -> pd.DataFrame:
+    try:
+        rows = conn.execute(
+            """
+            SELECT symbol, date, market_cap
+            FROM prices
+            WHERE market_cap IS NOT NULL
+              AND date >= ?
+            ORDER BY date, symbol
+            """,
+            (start_date,),
+        ).fetchall()
+    except Exception as exc:
+        _log(f"S&P500 market cap fallback read skipped: {type(exc).__name__}: {exc}")
+        return pd.DataFrame()
+    if not rows:
+        return pd.DataFrame()
+
+    frame = pd.DataFrame(rows, columns=["symbol", "date", "market_cap"])
+    frame["symbol"] = frame["symbol"].astype(str).str.strip().str.upper()
+    frame["date"] = pd.to_datetime(frame["date"], errors="coerce").dt.normalize()
+    frame["market_cap"] = pd.to_numeric(frame["market_cap"], errors="coerce")
+    frame = frame.dropna(subset=["symbol", "date", "market_cap"])
+    if frame.empty:
+        return pd.DataFrame()
+    wide = frame.pivot_table(index="date", columns="symbol", values="market_cap", aggfunc="last")
+    wide = wide.sort_index()
+    wide.index = pd.to_datetime(wide.index, errors="coerce").normalize()
+    wide = wide[~wide.index.isna()]
+    wide = wide[~wide.index.duplicated(keep="last")]
+    return wide.dropna(how="all")
+
+
 def _update_market_caps_direct(
     conn,
     *,
@@ -442,7 +477,22 @@ def _update_market_caps_direct(
         return 0
     if missing:
         _log(f"S&P500 market cap missing share histories: {len(missing)}")
-    shares_df = _share_histories_to_wide(shares_histories)
+    fetched_shares_df = _share_histories_to_wide(shares_histories)
+    fallback_start = (pd.Timestamp(fetch_start).normalize() - pd.Timedelta(days=30)).strftime("%Y-%m-%d")
+    existing_market_cap_df = _existing_market_caps_wide(conn, start_date=fallback_start)
+    inferred_shares_df = _share_histories_to_wide(
+        _infer_share_histories_from_existing_market_caps(
+            metrics_df,
+            existing_market_cap_df,
+            symbols,
+        )
+    )
+    if not inferred_shares_df.empty:
+        missing_before = set(symbols).difference(fetched_shares_df.columns if not fetched_shares_df.empty else [])
+        recovered = sorted(missing_before.intersection(inferred_shares_df.columns))
+        if recovered:
+            _log(f"S&P500 market cap fallback recovered shares for {len(recovered)} symbols from existing DB values")
+    shares_df = _overlay_fresh_on_existing(fetched_shares_df, inferred_shares_df)
     market_cap_df = _build_market_cap_frame_from_latest_shares(metrics_df, shares_df)
     market_cap_long = _market_cap_wide_to_long(
         market_cap_df,
