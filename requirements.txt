@@ -18,6 +18,7 @@ copulas
 pillow
 cryptography
 libsql
+libsql-client
 
 requests
 nbformat
