@@ -370,15 +370,12 @@ def _page_charts(page: str, dashboard: MacroDashboard) -> str:
         charts = [
             ("DXY 원지수", _line_chart(dashboard.market_series[["DXY"]], "DXY (FRED DTWEXBGS)", ylabel="index level")),
             (
-                "달러와 원자재",
-                _dual_axis_line_chart(
+                "원자재 Base 100",
+                _line_chart(
                     comm,
-                    dashboard.market_series[["DXY"]],
-                    "Commodities vs DXY Base 100",
-                    left_ylabel="Commodities base 100",
-                    right_ylabel="DXY base 100",
-                    normalize_left=True,
-                    normalize_right=True,
+                    "Commodities Base 100",
+                    ylabel="base 100",
+                    normalize=True,
                 ),
             ),
             ("원자재 60D 수익률", _bar_chart(comm.columns.astype(str).tolist(), returns_60d, "Commodity 60D Returns", ylabel="%")),
