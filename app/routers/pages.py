@@ -143,7 +143,7 @@ def index(request: Request, next: str | None = None, auth_error: str | None = No
     macro_card = (
         """
         <a class="service-card" href="/macro/overview">
-          <h3>거시분석</h3>
+          <h3>거시 분석</h3>
           <p>금리, 달러, 위험신호, 팩터 프레임워크를 종목/뉴스 분석의 배경 환경으로 제공합니다.</p>
         </a>
         """
