@@ -51,6 +51,10 @@ def _refresh_notice_card(*, visible: bool) -> str:
     news = data.get("news") if isinstance(data.get("news"), dict) else {}
     market_cap = data.get("market_cap") if isinstance(data.get("market_cap"), dict) else {}
     macro = data.get("macro") if isinstance(data.get("macro"), dict) else {}
+    sp500_replica = data.get("sp500_replica") if isinstance(data.get("sp500_replica"), dict) else {}
+    macro_replica = data.get("macro_replica") if isinstance(data.get("macro_replica"), dict) else {}
+    sp500_run = data.get("sp500_refresh_run") if isinstance(data.get("sp500_refresh_run"), dict) else {}
+    macro_run = data.get("macro_refresh_run") if isinstance(data.get("macro_refresh_run"), dict) else {}
     data_html = "".join(
         f"<li>{html.escape(label)}: {html.escape(value)}</li>"
         for label, value in (
@@ -62,12 +66,26 @@ def _refresh_notice_card(*, visible: bool) -> str:
     )
     data_html = (
         f"<li>S&amp;P500 source: {html.escape(str(data.get('sp500_source') or '-'))}</li>"
+        + f"<li>S&amp;P500 replica: enabled={html.escape(str(data.get('using_sp500_replica') or False))} "
+        f"path={html.escape(str(sp500_replica.get('path') or '-'))} "
+        f"modified={html.escape(str(sp500_replica.get('modified_at') or '-'))}</li>"
+        + f"<li>S&amp;P500 refresh run: status={html.escape(str(sp500_run.get('status') or '-'))} "
+        f"finished={html.escape(str(sp500_run.get('finished_at') or '-'))} "
+        f"price_rows={html.escape(str(sp500_run.get('price_rows') or 0))} "
+        f"fundamental_rows={html.escape(str(sp500_run.get('fundamental_rows') or 0))} "
+        f"news_rows={html.escape(str(sp500_run.get('news_rows') or 0))}</li>"
         + data_html
         + f"<li>Market cap: latest={html.escape(str(market_cap.get('latest_date') or '-'))} "
         f"rows={html.escape(str(market_cap.get('rows') or '-'))}</li>"
         + f"<li>Snapshot: latest={html.escape(str(snapshot.get('latest_as_of_date') or '-'))} "
         f"rows={html.escape(str(snapshot.get('rows') or '-'))}</li>"
         + f"<li>Macro source: {html.escape(str(data.get('macro_source') or '-'))}</li>"
+        + f"<li>Macro replica: enabled={html.escape(str(data.get('using_macro_replica') or False))} "
+        f"path={html.escape(str(macro_replica.get('path') or '-'))} "
+        f"modified={html.escape(str(macro_replica.get('modified_at') or '-'))}</li>"
+        + f"<li>Macro refresh run: status={html.escape(str(macro_run.get('status') or '-'))} "
+        f"finished={html.escape(str(macro_run.get('finished_at') or '-'))} "
+        f"macro_rows={html.escape(str(macro_run.get('macro_rows') or 0))}</li>"
     )
     exit_code = state.get("last_exit_code") if state.get("last_exit_code") is not None else "-"
     run_meta = (

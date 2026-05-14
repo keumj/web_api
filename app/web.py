@@ -12,9 +12,69 @@ def rewrite_links(page: str, replacements: dict[str, str]) -> str:
     return out
 
 
-def add_start_page_link(page: str) -> str:
-    link = '<div class="nav" style="margin-bottom:12px;"><a href="/">시작 페이지로 돌아가기</a></div>'
-    return page.replace('<div class="wrap">', '<div class="wrap">' + link, 1)
+def _service_nav(active: str = "", *, admin: bool = False) -> str:
+    active_class = {
+        "portfolio": "active" if active == "portfolio" else "",
+        "stock": "active" if active == "stock" else "",
+        "news": "active" if active == "news" else "",
+        "macro": "active" if active == "macro" else "",
+        "admin": "active" if active == "admin" else "",
+    }
+    admin_link = f'<a class="{active_class["admin"]}" href="/admin/users">사용자 관리</a>' if admin else ""
+    api_link = '<a href="/docs">API</a>' if admin else ""
+    macro_link = f'<a class="{active_class["macro"]}" href="/macro/overview">거시 분석</a>' if settings.enable_macro else ""
+    return f"""
+        <a class="{active_class["portfolio"]}" href="/portfolio/overview">포트폴리오</a>
+        <a class="{active_class["stock"]}" href="/stock/financials">종목 분석</a>
+        <a class="{active_class["news"]}" href="/stock-news/overview">뉴스 분석</a>
+        {macro_link}
+        {admin_link}
+        {api_link}
+    """
+
+
+def _service_chrome_css() -> str:
+    return """
+    :root {
+      --service-line: #d7e0ea;
+      --service-brand: #111827;
+    }
+    .service-top { position: sticky; top: 0; z-index: 2000; background: rgba(255,255,255,.96); border-bottom: 1px solid var(--service-line); font-family: "Segoe UI", "Noto Sans KR", sans-serif; }
+    .service-top-inner { width: 100%; max-width: 1460px; margin: 0 auto; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .service-brand { font-weight: 750; letter-spacing: 0; white-space: nowrap; color: var(--service-brand); }
+    .service-nav { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .service-nav a { color: var(--service-brand); border: 1px solid var(--service-line); background: #fff; text-decoration: none; border-radius: 8px; padding: 7px 11px; font-size: 13px; line-height: 1.3; }
+    .service-nav a.active { background: var(--service-brand); color: #fff; border-color: var(--service-brand); }
+    @media (max-width: 900px) {
+      .service-top-inner { align-items: flex-start; flex-direction: column; }
+      .service-nav { justify-content: flex-start; }
+    }
+"""
+
+
+def _service_top(active: str = "", *, admin: bool = False) -> str:
+    return f"""
+  <header class="service-top" data-service-chrome="1">
+    <div class="service-top-inner">
+      <div class="service-brand">Keumj Portfolio Lab</div>
+      <nav class="service-nav">{_service_nav(active, admin=admin)}</nav>
+    </div>
+  </header>
+"""
+
+
+def apply_service_chrome(page: str, *, active: str = "", admin: bool = False) -> str:
+    out = page
+    out = out.replace(
+        '<div class="nav" style="margin-bottom:12px;"><a href="/">?쒖옉 ?섏씠吏濡??뚯븘媛湲?/a></div>',
+        "",
+    )
+    out = out.replace('<div class="nav" style="margin-bottom:12px;"><a href="/">시작 페이지로 돌아가기</a></div>', "")
+    if "data-service-chrome" not in out:
+        style = f"\n  <style data-service-chrome>\n{_service_chrome_css()}\n  </style>\n"
+        out = out.replace("</head>", style + "</head>", 1) if "</head>" in out else style + out
+        out = out.replace("<body>", "<body>" + _service_top(active, admin=admin), 1) if "<body>" in out else _service_top(active, admin=admin) + out
+    return inject_busy_cursor_overlay(out)
 
 
 def inject_busy_cursor_overlay(page: str) -> str:
@@ -235,36 +295,15 @@ def shell(
     title: str,
     body: str,
     *,
-    active: str = "portfolio",
+    active: str = "",
     admin: bool = False,
     start_page_only: bool = False,
 ) -> str:
-    active_class = {
-        "portfolio": "active" if active == "portfolio" else "",
-        "stock": "active" if active == "stock" else "",
-        "news": "active" if active == "news" else "",
-        "macro": "active" if active == "macro" else "",
-        "admin": "active" if active == "admin" else "",
-    }
-    admin_link = f'<a class="{active_class["admin"]}" href="/admin/users">사용자 관리</a>' if admin else ""
-    api_link = '<a href="/docs">API</a>' if admin else ""
-    macro_link = f'<a class="{active_class["macro"]}" href="/macro/overview">거시 분석</a>' if settings.enable_macro else ""
-    header_display = "display:none;" if start_page_only else "block"
-    top_nav_style = "display:none;" if start_page_only else ""
-    brand_style = "display:none;" if start_page_only else ""
-    return_button = (
-        '<div class="service-nav" style="margin-bottom:15px; justify-content: flex-start;"><a href="/">시작 페이지로 돌아가기</a></div>'
-        if start_page_only
-        else ""
-    )
-    default_nav = f"""
-        <a class="{active_class["portfolio"]}" href="/portfolio/overview">포트폴리오</a>
-        <a class="{active_class["stock"]}" href="/stock/financials">종목 분석</a>
-        <a class="{active_class["news"]}" href="/stock-news/overview">뉴스 분석</a>
-        {macro_link}
-        {admin_link}
-        {api_link}
-    """
+    header_display = "block"
+    top_nav_style = ""
+    brand_style = ""
+    return_button = ""
+    default_nav = _service_nav(active, admin=admin)
     return inject_busy_cursor_overlay(f"""<!doctype html>
 <html lang="ko">
 <head>
@@ -320,7 +359,7 @@ def shell(
   </style>
 </head>
 <body>
-  <header class="service-top" style="{header_display}">
+  <header class="service-top" style="{header_display}" data-service-chrome="1">
     <div class="service-top-inner">
       <div class="service-brand" style="{brand_style}">Keumj Portfolio Lab</div>
       <nav class="service-nav" style="{top_nav_style}">{default_nav}</nav>

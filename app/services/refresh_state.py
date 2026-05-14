@@ -10,6 +10,8 @@ from typing import Any
 from app.settings import settings
 from pipeline_common.shared_sp500_prices_sql import (
     _connect_shared_prices_read_db,
+    shared_prices_embedded_replica_enabled,
+    shared_prices_replica_path,
     shared_prices_sqlite_path,
     shared_prices_storage_label,
     using_remote_shared_prices_db,
@@ -17,6 +19,8 @@ from pipeline_common.shared_sp500_prices_sql import (
 from pipeline_macro.macro_data_store import (
     DEFAULT_MACRO_DB_PATH,
     _connect_macro_read_db,
+    macro_embedded_replica_enabled,
+    macro_replica_path,
     macro_storage_label,
     using_remote_macro_db,
 )
@@ -105,6 +109,31 @@ def _db_fetchone(connect, query: str) -> tuple[Any, ...] | None:
         return None
 
 
+def _latest_refresh_run(connect) -> dict[str, Any] | None:
+    row = _db_fetchone(
+        connect,
+        """
+        SELECT job_name, mode, status, finished_at, price_rows, fundamental_rows, news_rows, macro_rows, message
+        FROM refresh_runs
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+    )
+    if not row:
+        return None
+    return {
+        "job_name": str(row[0] or ""),
+        "mode": str(row[1] or ""),
+        "status": str(row[2] or ""),
+        "finished_at": str(row[3] or ""),
+        "price_rows": int(row[4] or 0),
+        "fundamental_rows": int(row[5] or 0),
+        "news_rows": int(row[6] or 0),
+        "macro_rows": int(row[7] or 0),
+        "message": str(row[8] or ""),
+    }
+
+
 def collect_git_status(root: Path | None = None) -> dict[str, Any]:
     root_dir = root or settings.project_root
     try:
@@ -141,6 +170,12 @@ def collect_data_status(root: Path | None = None) -> dict[str, Any]:
     root_dir = root or settings.project_root
     shared_sqlite = _resolve_root_path(root_dir, shared_prices_sqlite_path(root_dir / "data" / "sp500_shared_db"))
     macro_sqlite = _resolve_root_path(root_dir, DEFAULT_MACRO_DB_PATH)
+    sp500_replica = shared_prices_replica_path()
+    macro_replica = macro_replica_path()
+    if not sp500_replica.is_absolute():
+        sp500_replica = _resolve_root_path(root_dir, sp500_replica)
+    if not macro_replica.is_absolute():
+        macro_replica = _resolve_root_path(root_dir, macro_replica)
 
     if using_remote_shared_prices_db():
         sp500_source = shared_prices_storage_label()
@@ -153,6 +188,7 @@ def collect_data_status(root: Path | None = None) -> dict[str, Any]:
             _connect_shared_prices_read_db,
             "SELECT MAX(publish_date), COUNT(*), COUNT(DISTINCT ticker) FROM news_articles",
         )
+        sp500_refresh_run = _latest_refresh_run(_connect_shared_prices_read_db)
     else:
         sp500_source = shared_prices_storage_label(shared_sqlite)
         prices = _sqlite_fetchone(shared_sqlite, "SELECT MAX(date), COUNT(*), COUNT(DISTINCT symbol) FROM prices")
@@ -161,13 +197,16 @@ def collect_data_status(root: Path | None = None) -> dict[str, Any]:
             "SELECT MAX(fiscal_date), COUNT(*), COUNT(DISTINCT symbol), MAX(updated_at) FROM fundamentals_quarterly",
         )
         news = _sqlite_fetchone(shared_sqlite, "SELECT MAX(publish_date), COUNT(*), COUNT(DISTINCT ticker) FROM news_articles")
+        sp500_refresh_run = None
 
     if using_remote_macro_db():
         macro_source = macro_storage_label()
         macro = _db_fetchone(_connect_macro_read_db, "SELECT MAX(date), COUNT(*), COUNT(DISTINCT series_id) FROM macro_series")
+        macro_refresh_run = _latest_refresh_run(_connect_macro_read_db)
     else:
         macro_source = macro_storage_label(macro_sqlite)
         macro = _sqlite_fetchone(macro_sqlite, "SELECT MAX(date), COUNT(*), COUNT(DISTINCT series_id) FROM macro_series")
+        macro_refresh_run = None
 
     snapshot = _db_fetchone(_connect_shared_prices_read_db, "SELECT MAX(as_of_date), COUNT(*) FROM fundamentals_snapshot") if using_remote_shared_prices_db() else _sqlite_fetchone(
         shared_sqlite,
@@ -183,11 +222,19 @@ def collect_data_status(root: Path | None = None) -> dict[str, Any]:
         "macro_source": macro_source,
         "using_remote_sp500": using_remote_shared_prices_db(),
         "using_remote_macro": using_remote_macro_db(),
+        "using_sp500_replica": shared_prices_embedded_replica_enabled(),
+        "using_macro_replica": macro_embedded_replica_enabled(),
         "shared_sqlite": {
             "path": _display_project_path(shared_sqlite),
             "exists": shared_sqlite.exists(),
             "size_bytes": shared_sqlite.stat().st_size if shared_sqlite.exists() else 0,
             "modified_at": _format_mtime(shared_sqlite),
+        },
+        "sp500_replica": {
+            "path": _display_project_path(sp500_replica),
+            "exists": sp500_replica.exists(),
+            "size_bytes": sp500_replica.stat().st_size if sp500_replica.exists() else 0,
+            "modified_at": _format_mtime(sp500_replica),
         },
         "macro_sqlite": {
             "path": _display_project_path(macro_sqlite),
@@ -195,6 +242,14 @@ def collect_data_status(root: Path | None = None) -> dict[str, Any]:
             "size_bytes": macro_sqlite.stat().st_size if macro_sqlite.exists() else 0,
             "modified_at": _format_mtime(macro_sqlite),
         },
+        "macro_replica": {
+            "path": _display_project_path(macro_replica),
+            "exists": macro_replica.exists(),
+            "size_bytes": macro_replica.stat().st_size if macro_replica.exists() else 0,
+            "modified_at": _format_mtime(macro_replica),
+        },
+        "sp500_refresh_run": sp500_refresh_run,
+        "macro_refresh_run": macro_refresh_run,
         "prices": {
             "latest_date": str(prices[0]) if prices and prices[0] else None,
             "rows": int(prices[1] or 0) if prices else None,

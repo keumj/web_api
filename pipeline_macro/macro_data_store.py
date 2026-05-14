@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -64,6 +65,23 @@ def _env_first(*names: str) -> str:
     return ""
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = str(os.getenv(name, "")).strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
 def macro_database_url() -> str:
     try:
         from app.settings import settings
@@ -90,18 +108,37 @@ def using_remote_macro_db() -> bool:
     return bool(macro_database_url())
 
 
+def macro_embedded_replica_enabled() -> bool:
+    return bool(macro_database_url()) and _env_bool("KEUMJ_TURSO_EMBEDDED_REPLICA", True)
+
+
+def macro_replica_path() -> Path:
+    explicit = str(os.getenv("KEUMJ_MACRO_REPLICA_PATH", "")).strip()
+    if explicit:
+        return Path(explicit)
+    replica_dir = Path(os.getenv("KEUMJ_TURSO_REPLICA_DIR", "data/turso_replicas"))
+    return replica_dir / "macro_prices_replica.sqlite"
+
+
 def macro_storage_label(path: str | os.PathLike[str] | None = None) -> str:
     url = macro_database_url()
     if url:
+        if macro_embedded_replica_enabled():
+            return f"turso-replica:{macro_replica_path().as_posix()}<-{url}"
         return f"turso:{url}"
     return f"macro_sqlite:{macro_db_path(path).as_posix()}"
+
+
+_MACRO_REPLICA_LAST_SYNC: dict[str, float] = {}
 
 
 class _RemoteConnectionProxy:
     _keumj_remote_libsql = True
 
-    def __init__(self, conn):
+    def __init__(self, conn, *, replica_path: Path | None = None):
         self._conn = conn
+        self.replica_path = replica_path
+        self._keumj_embedded_replica = replica_path is not None
 
     def __getattr__(self, name: str):
         return getattr(self._conn, name)
@@ -115,6 +152,24 @@ class _RemoteConnectionProxy:
             close()
 
 
+def _maybe_sync_macro_replica(conn, replica_path: Path) -> None:
+    sync = getattr(conn, "sync", None)
+    if sync is None:
+        return
+    interval = max(_env_int("KEUMJ_TURSO_REPLICA_SYNC_SECONDS", 300), 0)
+    key = str(replica_path.resolve())
+    now = time.monotonic()
+    if key in _MACRO_REPLICA_LAST_SYNC and interval > 0 and now - _MACRO_REPLICA_LAST_SYNC[key] < interval:
+        return
+    try:
+        sync()
+    except Exception:
+        if replica_path.exists() and replica_path.stat().st_size > 0:
+            return
+        raise
+    _MACRO_REPLICA_LAST_SYNC[key] = now
+
+
 def _connect_macro_read_db(path: str | os.PathLike[str] | None = None):
     url = macro_database_url()
     if url:
@@ -124,12 +179,35 @@ def _connect_macro_read_db(path: str | os.PathLike[str] | None = None):
             raise RuntimeError(
                 "KEUMJ_MACRO_DATABASE_URL is set, but the 'libsql' package is not installed."
             ) from exc
-        kwargs: dict[str, str] = {"database": url}
         token = macro_database_auth_token()
+        if macro_embedded_replica_enabled():
+            replica_path = macro_replica_path()
+            replica_path.parent.mkdir(parents=True, exist_ok=True)
+            kwargs: dict[str, object] = {
+                "database": str(replica_path),
+                "sync_url": url,
+                "sync_interval": max(_env_int("KEUMJ_TURSO_REPLICA_SYNC_SECONDS", 300), 0),
+            }
+            if token:
+                kwargs["auth_token"] = token
+            conn = libsql.connect(**kwargs)
+            _maybe_sync_macro_replica(conn, replica_path)
+            return _RemoteConnectionProxy(conn, replica_path=replica_path)
+        kwargs: dict[str, object] = {"database": url}
         if token:
             kwargs["auth_token"] = token
         return _RemoteConnectionProxy(libsql.connect(**kwargs))
     return sqlite3.connect(macro_db_path(path))
+
+
+def read_sql_dataframe(conn, query: str, params: list[object] | tuple[object, ...] | None = None) -> pd.DataFrame:
+    if isinstance(conn, sqlite3.Connection):
+        return pd.read_sql_query(query, conn, params=params)
+    cur = conn.execute(query, tuple(params or ()))
+    rows = cur.fetchall()
+    description = getattr(cur, "description", None) or []
+    columns = [str(col[0]) for col in description]
+    return pd.DataFrame([tuple(row) for row in rows], columns=columns)
 
 
 def explain_macro_auth_error(exc: Exception) -> RuntimeError:
@@ -249,9 +327,9 @@ def read_macro_series(series_id: str, *, start_date: str | pd.Timestamp, db_path
     try:
         with _connect_macro_read_db(db_path) as conn:
             ensure_macro_schema(conn)
-            raw = pd.read_sql_query(
-                "SELECT date, value FROM macro_series WHERE series_id = ? AND date >= ? ORDER BY date",
+            raw = read_sql_dataframe(
                 conn,
+                "SELECT date, value FROM macro_series WHERE series_id = ? AND date >= ? ORDER BY date",
                 params=[series_id, pd.Timestamp(start_date).normalize().strftime("%Y-%m-%d")],
             )
     except Exception as exc:
@@ -278,9 +356,9 @@ def read_macro_frame(series_ids: list[str], *, start_date: str | pd.Timestamp, d
     try:
         with _connect_macro_read_db(db_path) as conn:
             ensure_macro_schema(conn)
-            raw = pd.read_sql_query(
-                f"SELECT date, series_id, value FROM macro_series WHERE series_id IN ({placeholders}) AND date >= ? ORDER BY date, series_id",
+            raw = read_sql_dataframe(
                 conn,
+                f"SELECT date, series_id, value FROM macro_series WHERE series_id IN ({placeholders}) AND date >= ? ORDER BY date, series_id",
                 params=params,
             )
     except Exception as exc:

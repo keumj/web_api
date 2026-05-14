@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
-import libsql_client
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -113,6 +113,23 @@ def _env_first(*names: str) -> str:
     return ""
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = str(os.getenv(name, "")).strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
 def shared_prices_database_url() -> str:
     try:
         from app.settings import settings
@@ -139,19 +156,38 @@ def using_remote_shared_prices_db() -> bool:
     return bool(shared_prices_database_url())
 
 
+def shared_prices_embedded_replica_enabled() -> bool:
+    return bool(shared_prices_database_url()) and _env_bool("KEUMJ_TURSO_EMBEDDED_REPLICA", True)
+
+
+def shared_prices_replica_path() -> Path:
+    explicit = str(os.getenv("KEUMJ_SP500_REPLICA_PATH", "")).strip()
+    if explicit:
+        return Path(explicit)
+    replica_dir = Path(os.getenv("KEUMJ_TURSO_REPLICA_DIR", "data/turso_replicas"))
+    return replica_dir / "sp500_shared_prices_replica.sqlite"
+
+
 def shared_prices_storage_label(target: Path | str | None = None) -> str:
     url = shared_prices_database_url()
     if url:
+        if shared_prices_embedded_replica_enabled():
+            return f"turso-replica:{shared_prices_replica_path().as_posix()}<-{url}"
         return f"turso:{url}"
     path = Path(target) if target is not None else shared_prices_sqlite_path()
     return f"sqlite:{path.as_posix()}"
 
 
+_SHARED_REPLICA_LAST_SYNC: dict[str, float] = {}
+
+
 class _RemoteConnectionProxy:
     _keumj_remote_libsql = True
 
-    def __init__(self, conn):
+    def __init__(self, conn, *, replica_path: Path | None = None):
         self._conn = conn
+        self.replica_path = replica_path
+        self._keumj_embedded_replica = replica_path is not None
 
     def __getattr__(self, name: str):
         return getattr(self._conn, name)
@@ -165,6 +201,24 @@ class _RemoteConnectionProxy:
             close()
 
 
+def _maybe_sync_shared_replica(conn, replica_path: Path) -> None:
+    sync = getattr(conn, "sync", None)
+    if sync is None:
+        return
+    interval = max(_env_int("KEUMJ_TURSO_REPLICA_SYNC_SECONDS", 300), 0)
+    key = str(replica_path.resolve())
+    now = time.monotonic()
+    if key in _SHARED_REPLICA_LAST_SYNC and interval > 0 and now - _SHARED_REPLICA_LAST_SYNC[key] < interval:
+        return
+    try:
+        sync()
+    except Exception:
+        if replica_path.exists() and replica_path.stat().st_size > 0:
+            return
+        raise
+    _SHARED_REPLICA_LAST_SYNC[key] = now
+
+
 def _connect_shared_prices_read_db(target: Path | str | None = None):
     url = shared_prices_database_url()
     if url:
@@ -174,13 +228,36 @@ def _connect_shared_prices_read_db(target: Path | str | None = None):
             raise RuntimeError(
                 "KEUMJ_SP500_DATABASE_URL is set, but the 'libsql' package is not installed."
             ) from exc
-        kwargs: dict[str, str] = {"database": url}
         token = shared_prices_database_auth_token()
+        if shared_prices_embedded_replica_enabled():
+            replica_path = shared_prices_replica_path()
+            replica_path.parent.mkdir(parents=True, exist_ok=True)
+            kwargs: dict[str, object] = {
+                "database": str(replica_path),
+                "sync_url": url,
+                "sync_interval": max(_env_int("KEUMJ_TURSO_REPLICA_SYNC_SECONDS", 300), 0),
+            }
+            if token:
+                kwargs["auth_token"] = token
+            conn = libsql.connect(**kwargs)
+            _maybe_sync_shared_replica(conn, replica_path)
+            return _RemoteConnectionProxy(conn, replica_path=replica_path)
+        kwargs: dict[str, object] = {"database": url}
         if token:
             kwargs["auth_token"] = token
         return _RemoteConnectionProxy(libsql.connect(**kwargs))
     path = Path(target) if target is not None else shared_prices_sqlite_path()
     return sqlite3.connect(path)
+
+
+def read_sql_dataframe(conn, query: str, params: list[object] | tuple[object, ...] | None = None) -> pd.DataFrame:
+    if isinstance(conn, sqlite3.Connection):
+        return pd.read_sql_query(query, conn, params=params)
+    cur = conn.execute(query, tuple(params or ()))
+    rows = cur.fetchall()
+    description = getattr(cur, "description", None) or []
+    columns = [str(col[0]) for col in description]
+    return pd.DataFrame([tuple(row) for row in rows], columns=columns)
 
 
 def explain_shared_prices_auth_error(exc: Exception) -> RuntimeError:
@@ -576,14 +653,14 @@ def load_shared_fundamentals_for_symbols(
     with _connect_shared_prices_read_db(target) as conn:
         _ensure_prices_table_schema(conn)
         placeholders = ",".join("?" for _ in normalized)
-        frame = pd.read_sql_query(
+        frame = read_sql_dataframe(
+            conn,
             f"""
             SELECT symbol, as_of_date, roe, per, pbr, source, updated_at
             FROM fundamentals_snapshot
             WHERE symbol IN ({placeholders})
             ORDER BY symbol ASC
             """,
-            conn,
             params=normalized,
         )
     if frame.empty:
@@ -779,7 +856,7 @@ def load_shared_quarterly_fundamentals_for_symbols(
             WHERE symbol IN ({placeholders})
             ORDER BY symbol ASC, fiscal_date DESC
         """
-        frame = pd.read_sql_query(query, conn, params=normalized)
+        frame = read_sql_dataframe(conn, query, params=normalized)
     if frame.empty:
         return None, None
     frame["symbol"] = frame["symbol"].astype(str).str.upper()
@@ -1012,7 +1089,7 @@ def _query_shared_prices_sqlite(
     db_path: Path,
 ) -> pd.DataFrame:
     with _connect_shared_prices_read_db(db_path) as conn:
-        return pd.read_sql_query(query, conn, params=params)
+        return read_sql_dataframe(conn, query, params=params)
 
 
 def load_shared_ohlcv_for_symbol(
@@ -1343,7 +1420,7 @@ def load_financial_market_series(
         query += " ORDER BY date"
 
         try:
-            raw = pd.read_sql_query(query, conn, params=params)
+            raw = read_sql_dataframe(conn, query, params=params)
         except Exception:
             return None, None
 
@@ -1394,7 +1471,7 @@ def load_financial_market_frame(
         query += " ORDER BY date, series_id"
 
         try:
-            raw = pd.read_sql_query(query, conn, params=params)
+            raw = read_sql_dataframe(conn, query, params=params)
         except Exception:
             return None, None
 

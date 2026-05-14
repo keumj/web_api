@@ -18,6 +18,7 @@ from pipeline_common.shared_sp500_prices_sql import (
     _shared_prices_available,
     load_shared_close_prices_for_symbols,
     load_shared_market_caps_for_symbols,
+    read_sql_dataframe,
     shared_prices_sqlite_path,
 )
 from pipeline_macro.macro_data_store import fred_api_key, read_macro_series
@@ -511,7 +512,7 @@ def _latest_news_signals(
     """
     params: list[object] = [*tickers, start_date]
     with _connect_shared_prices_read_db(target) as conn:
-        frame = pd.read_sql_query(query, conn, params=params)
+        frame = read_sql_dataframe(conn, query, params=params)
     if frame.empty:
         return pd.DataFrame(
             [{"ticker": ticker, "recent_news_count": 0, "avg_sentiment_score": np.nan, "news_signal_score": 50.0} for ticker in tickers]

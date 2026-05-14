@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from pipeline_stock_news import web_gui as news_web
 
-from app.web import add_start_page_link, inject_busy_cursor_overlay, rewrite_links
+from app.web import apply_service_chrome, rewrite_links
 
 
 NEWS_REWRITES = {
@@ -75,7 +75,7 @@ def render(page: str, *, session_key: str = "global") -> str:
         error=state.error,
     )
     html = rewrite_links(_render_func(page_key)(ctx), NEWS_REWRITES)
-    return inject_busy_cursor_overlay(add_start_page_link(html))
+    return apply_service_chrome(html, active="news")
 
 
 def run(page: str, form: dict[str, str], *, session_key: str = "global") -> str:

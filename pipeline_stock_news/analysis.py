@@ -11,7 +11,11 @@ import re
 import numpy as np
 import pandas as pd
 
-from pipeline_common.shared_sp500_prices_sql import _connect_shared_prices_read_db, shared_prices_sqlite_path
+from pipeline_common.shared_sp500_prices_sql import (
+    _connect_shared_prices_read_db,
+    read_sql_dataframe,
+    shared_prices_sqlite_path,
+)
 
 DEFAULT_LOOKBACK_DAYS = 45
 DEFAULT_EVENT_KEYWORDS = "earnings"
@@ -394,7 +398,7 @@ def _load_market_context(
     if max_rows > 0:
         query += " LIMIT ?"
         params.append(max_rows)
-    frame = pd.read_sql_query(query, conn, params=params)
+    frame = read_sql_dataframe(conn, query, params=params)
     if frame.empty:
         return frame
     frame["publish_date"] = pd.to_datetime(frame["publish_date"], errors="coerce")
@@ -426,7 +430,7 @@ def _load_prices(
         ORDER BY symbol ASC, date ASC
     """
     params: list[object] = [*symbols, min_date.strftime("%Y-%m-%d"), max_date.strftime("%Y-%m-%d")]
-    frame = pd.read_sql_query(query, conn, params=params)
+    frame = read_sql_dataframe(conn, query, params=params)
     if frame.empty:
         return {}
     frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
