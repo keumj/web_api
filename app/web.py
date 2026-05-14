@@ -42,6 +42,7 @@ def _service_chrome_css() -> str:
     .service-top { position: sticky; top: 0; z-index: 2000; background: rgba(255,255,255,.96); border-bottom: 1px solid var(--service-line); font-family: "Segoe UI", "Noto Sans KR", sans-serif; }
     .service-top-inner { width: 100%; max-width: 1460px; margin: 0 auto; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .service-brand { font-weight: 750; letter-spacing: 0; white-space: nowrap; color: var(--service-brand); }
+    .service-brand a { color: inherit; text-decoration: none; }
     .service-nav { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
     .service-nav a { color: var(--service-brand); border: 1px solid var(--service-line); background: #fff; text-decoration: none; border-radius: 8px; padding: 7px 11px; font-size: 13px; line-height: 1.3; }
     .service-nav a.active { background: var(--service-brand); color: #fff; border-color: var(--service-brand); }
@@ -56,7 +57,7 @@ def _service_top(active: str = "", *, admin: bool = False) -> str:
     return f"""
   <header class="service-top" data-service-chrome="1">
     <div class="service-top-inner">
-      <div class="service-brand">Keumj Portfolio Lab</div>
+      <div class="service-brand"><a href="/">Keumj Portfolio Lab</a></div>
       <nav class="service-nav">{_service_nav(active, admin=admin)}</nav>
     </div>
   </header>
@@ -327,6 +328,7 @@ def shell(
     .service-top {{ position: sticky; top: 0; z-index: 20; background: rgba(255,255,255,.96); border-bottom: 1px solid var(--line); }}
     .service-top-inner {{ width: 100%; max-width: 1460px; margin: 0 auto; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }}
     .service-brand {{ font-weight: 750; letter-spacing: 0; white-space: nowrap; }}
+    .service-brand a {{ color: inherit; text-decoration: none; }}
     .service-nav {{ display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }}
     .service-nav a {{ color: var(--brand); border: 1px solid var(--line); background: #fff; text-decoration: none; border-radius: 8px; padding: 7px 11px; font-size: 13px; }}
     .service-nav a.active {{ background: var(--brand); color: #fff; border-color: var(--brand); }}
@@ -362,7 +364,7 @@ def shell(
 <body>
   <header class="service-top" style="{header_display}" data-service-chrome="1">
     <div class="service-top-inner">
-      <div class="service-brand" style="{brand_style}">Keumj Portfolio Lab</div>
+      <div class="service-brand" style="{brand_style}"><a href="/">Keumj Portfolio Lab</a></div>
       <nav class="service-nav" style="{top_nav_style}">{default_nav}</nav>
     </div>
   </header>

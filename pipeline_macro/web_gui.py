@@ -291,7 +291,18 @@ def _page_charts(page: str, dashboard: MacroDashboard) -> str:
             "Copper": comm["Copper"],
         }
         charts = [
-            ("위험자산, 달러, 금 흐름", _line_chart(dashboard.market_series, "S&P 500 / DXY / Gold Base 100", normalize=True)),
+            (
+                "위험자산, 달러, 금 흐름",
+                _dual_axis_line_chart(
+                    dashboard.market_series[["S&P 500", "Gold"]],
+                    dashboard.market_series[["DXY"]],
+                    "S&P 500 / Gold vs DXY Base 100",
+                    left_ylabel="S&P 500 / Gold base 100",
+                    right_ylabel="DXY base 100",
+                    normalize_left=True,
+                    normalize_right=True,
+                ),
+            ),
             (
                 "핵심 자산 60D 변화율",
                 _horizontal_bar_chart(
@@ -358,7 +369,18 @@ def _page_charts(page: str, dashboard: MacroDashboard) -> str:
         commodity_sensitivity = sensitivity[sensitivity["대상"].astype(str).isin(comm.columns.astype(str))]
         charts = [
             ("DXY 원지수", _line_chart(dashboard.market_series[["DXY"]], "DXY (FRED DTWEXBGS)", ylabel="index level")),
-            ("달러와 원자재", _line_chart(pd.concat([dashboard.market_series[["DXY"]], comm], axis=1), "DXY and Commodities Base 100", normalize=True)),
+            (
+                "달러와 원자재",
+                _dual_axis_line_chart(
+                    comm,
+                    dashboard.market_series[["DXY"]],
+                    "Commodities vs DXY Base 100",
+                    left_ylabel="Commodities base 100",
+                    right_ylabel="DXY base 100",
+                    normalize_left=True,
+                    normalize_right=True,
+                ),
+            ),
             ("원자재 60D 수익률", _bar_chart(comm.columns.astype(str).tolist(), returns_60d, "Commodity 60D Returns", ylabel="%")),
             (
                 "달러-원자재 60D 상관",

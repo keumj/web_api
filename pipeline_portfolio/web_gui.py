@@ -805,7 +805,7 @@ def _scoring_page(ctx: _PageContext) -> str:
             if t == "CASH": return t
             # 로컬 중계 경로를 통해 Stock Lab 자동 실행 후 리다이렉트
             safe_ticker = html.escape(str(t).strip().upper())
-            url = f"/stock-forecast?ticker={safe_ticker}&intent=run" # 내부 경로로 변경
+            url = f"/stock/financials?ticker={safe_ticker}&intent=run"
             return (
                 f'<a href="{url}" '
                 f'onclick="return triggerStockLabSync(\'{safe_ticker}\', this.href);" '
@@ -861,9 +861,8 @@ def _scoring_page(ctx: _PageContext) -> str:
     <script>
       function triggerStockLabSync(ticker, targetPath) {{
         // Stock Lab 페이지로 이동하면서 티커를 전달
-        const url = targetPath + "?ticker=" + encodeURIComponent(ticker) + "&intent=run";
-        window.location.href = url;
-        return true; // 링크 클릭 시 페이지 이동을 막지 않음
+        window.location.href = targetPath;
+        return false;
       }}
     </script>
     """
