@@ -62,10 +62,22 @@ PAGE_TO_SECTIONS: dict[str, frozenset[str]] = {
     "topics": frozenset({DASHBOARD_SECTION_TOPICS}),
 }
 
+KEYWORD_PRESET_CUSTOM = "custom"
+KEYWORD_PRESETS: dict[str, tuple[str, str]] = {
+    "earnings_financials": ("실적/재무", "earnings, revenue, profit, margin, guidance, eps, forecast"),
+    "orders_contracts": ("수주/계약", "contract, order, deal, partnership, win, awarded, supply, agreement"),
+    "disclosures_ir": ("공시/IR", "sec, filing, disclosure, report, investor, shareholder, presentation"),
+    "product_strategy": ("제품/전략", "launch, product, service, expansion, strategy, roadmap, partnership"),
+    "risk_regulation": ("리스크/규제", "lawsuit, investigation, recall, regulation, antitrust, downgrade, warning"),
+    KEYWORD_PRESET_CUSTOM: ("직접 입력", ""),
+}
+
 
 def _default_form() -> dict[str, str]:
+    default_preset = "earnings_financials"
     return {
-        "event_keywords": DEFAULT_EVENT_KEYWORDS,
+        "keyword_preset": default_preset,
+        "event_keywords": KEYWORD_PRESETS[default_preset][1] or DEFAULT_EVENT_KEYWORDS,
         "ticker": "",
         "lookback_days": str(DEFAULT_LOOKBACK_DAYS),
         "horizon_days": str(DEFAULT_EVENT_HORIZON_DAYS),
@@ -171,6 +183,10 @@ def _base_css(is_sub_page: bool = False) -> str:
     .form-grid input[type="text"], .form-grid input[type="number"] {
       width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--line); border-radius: 6px;
     }
+    .form-grid select {
+      width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff;
+    }
+    .form-grid input.keyword-from-preset { background: #f7f9fb; color: #3f4b59; }
     .row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-top: 10px; }
     button { background: var(--brand); border: 0; color: #fff; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; }
     .notice { margin-top: 10px; border-radius: 8px; padding: 10px; }
@@ -642,9 +658,18 @@ def _page_key_from_path(path: str) -> str:
 
 
 def _shared_form(form: dict[str, str], *, action: str, button_label: str) -> str:
+    keyword_preset = form.get("keyword_preset", "earnings_financials")
+    if keyword_preset not in KEYWORD_PRESETS:
+        keyword_preset = KEYWORD_PRESET_CUSTOM
+    preset_options = "".join(
+        f'<option value="{html.escape(value)}"{" selected" if value == keyword_preset else ""}>{html.escape(label)}</option>'
+        for value, (label, _keywords) in KEYWORD_PRESETS.items()
+    )
+    preset_json = html.escape(json.dumps({key: keywords for key, (_label, keywords) in KEYWORD_PRESETS.items()}), quote=True)
     return f"""
-    <form class="card" method="post" action="{action}">
+    <form class="card stock-news-run-form" method="post" action="{action}" data-keyword-presets="{preset_json}">
       <div class="form-grid">
+        <div><label>키워드 프리셋</label><select name="keyword_preset">{preset_options}</select></div>
         <div><label>키워드</label><input type="text" name="event_keywords" value="{html.escape(form.get('event_keywords', ''))}" /></div>
         <div><label>티커</label><input type="text" name="ticker" value="{html.escape(form.get('ticker', ''))}" placeholder="AAPL" /></div>
         <div><label>조회 일수</label><input type="number" min="7" max="365" name="lookback_days" value="{html.escape(form.get('lookback_days', ''))}" /></div>
@@ -657,6 +682,37 @@ def _shared_form(form: dict[str, str], *, action: str, button_label: str) -> str
         <button type="submit" name="intent" value="resolve_ticker">회사이름으로 티커 찾기</button>
       </div>
     </form>
+    <script>
+      (function () {{
+        const form = document.currentScript.previousElementSibling;
+        if (!form || !form.matches(".stock-news-run-form")) {{
+          return;
+        }}
+        const presetSelect = form.querySelector('select[name="keyword_preset"]');
+        const keywordInput = form.querySelector('input[name="event_keywords"]');
+        const presets = JSON.parse(form.dataset.keywordPresets || "{{}}");
+        const keywordLabel = keywordInput && keywordInput.closest("div") ? keywordInput.closest("div").querySelector("label") : null;
+        if (keywordLabel) {{
+          keywordLabel.textContent = "실제 적용 키워드";
+        }}
+        function markPresetMode() {{
+          keywordInput.classList.toggle("keyword-from-preset", presetSelect.value !== "{KEYWORD_PRESET_CUSTOM}");
+        }}
+        presetSelect.addEventListener("change", function () {{
+          if (presetSelect.value !== "{KEYWORD_PRESET_CUSTOM}") {{
+            keywordInput.value = presets[presetSelect.value] || "";
+          }}
+          markPresetMode();
+        }});
+        keywordInput.addEventListener("input", function () {{
+          if (presetSelect.value !== "{KEYWORD_PRESET_CUSTOM}" && keywordInput.value !== (presets[presetSelect.value] || "")) {{
+            presetSelect.value = "{KEYWORD_PRESET_CUSTOM}";
+            markPresetMode();
+          }}
+        }});
+        markPresetMode();
+      }})();
+    </script>
     """
 
 
@@ -940,6 +996,18 @@ def _parse_form(body: bytes) -> dict[str, str]:
     if "intent" in parsed and parsed["intent"]:
         form["intent"] = str(parsed["intent"][0]).strip()
     return form
+
+
+def _apply_keyword_preset(form: dict[str, str]) -> str:
+    keyword_preset = form.get("keyword_preset", "earnings_financials")
+    if keyword_preset not in KEYWORD_PRESETS:
+        keyword_preset = KEYWORD_PRESET_CUSTOM
+    form["keyword_preset"] = keyword_preset
+    if keyword_preset != KEYWORD_PRESET_CUSTOM:
+        form["event_keywords"] = KEYWORD_PRESETS[keyword_preset][1]
+    else:
+        form["event_keywords"] = form.get("event_keywords", DEFAULT_EVENT_KEYWORDS).strip()
+    return form["event_keywords"]
 
 
 def _project_root_dir() -> Path:
@@ -1235,6 +1303,7 @@ def _html_refresh_history_page(is_sub_page: bool = False) -> str:
 """
 def _build_dashboard_from_form(form: dict[str, str], page_key: str) -> StockNewsDashboard:
     ticker = form.get("ticker", "").strip().upper() or None
+    event_keywords = _apply_keyword_preset(form)
     light_mode = str(os.getenv("KEUMJM_NEWS_LIGHT_MODE", "false")).strip().lower() in {"1", "true", "yes", "on"}
     lookback_days = max(int(form.get("lookback_days", str(DEFAULT_LOOKBACK_DAYS)) or str(DEFAULT_LOOKBACK_DAYS)), 1)
     horizon_days = max(int(form.get("horizon_days", DEFAULT_EVENT_HORIZON_DAYS) or DEFAULT_EVENT_HORIZON_DAYS), 1)
@@ -1246,7 +1315,7 @@ def _build_dashboard_from_form(form: dict[str, str], page_key: str) -> StockNews
         divergence_top_n = min(divergence_top_n, int(os.getenv("KEUMJM_NEWS_MAX_TOP_N", "10") or "10"))
         topic_count = min(topic_count, int(os.getenv("KEUMJM_NEWS_MAX_TOPIC_COUNT", "3") or "3"))
     return build_stock_news_dashboard(
-        event_keywords=form.get("event_keywords", DEFAULT_EVENT_KEYWORDS),
+        event_keywords=event_keywords,
         ticker=ticker,
         lookback_days=lookback_days,
         horizon_days=horizon_days,
