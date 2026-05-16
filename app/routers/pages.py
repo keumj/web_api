@@ -47,9 +47,7 @@ def _refresh_notice_card(*, visible: bool) -> str:
     data = state.get("data") if isinstance(state.get("data"), dict) else {}
     prices = data.get("prices") if isinstance(data.get("prices"), dict) else {}
     quarterly = data.get("quarterly") if isinstance(data.get("quarterly"), dict) else {}
-    snapshot = data.get("snapshot") if isinstance(data.get("snapshot"), dict) else {}
     news = data.get("news") if isinstance(data.get("news"), dict) else {}
-    market_cap = data.get("market_cap") if isinstance(data.get("market_cap"), dict) else {}
     macro = data.get("macro") if isinstance(data.get("macro"), dict) else {}
     sp500_replica = data.get("sp500_replica") if isinstance(data.get("sp500_replica"), dict) else {}
     macro_replica = data.get("macro_replica") if isinstance(data.get("macro_replica"), dict) else {}
@@ -58,10 +56,10 @@ def _refresh_notice_card(*, visible: bool) -> str:
     data_html = "".join(
         f"<li>{html.escape(label)}: {html.escape(value)}</li>"
         for label, value in (
-            ("가격", f"latest={prices.get('latest_date') or '-'} rows={prices.get('rows') or '-'}"),
-            ("분기 재무", f"latest={quarterly.get('latest_fiscal_date') or '-'} rows={quarterly.get('rows') or '-'}"),
-            ("뉴스", f"latest={news.get('latest_publish_date') or '-'} rows={news.get('rows') or '-'}"),
-            ("매크로", f"latest={macro.get('latest_date') or '-'} rows={macro.get('rows') or '-'}"),
+            ("가격", f"latest={prices.get('latest_date') or '-'}"),
+            ("분기 재무", f"latest={quarterly.get('latest_fiscal_date') or '-'}"),
+            ("뉴스", f"latest={news.get('latest_publish_date') or '-'}"),
+            ("매크로", f"latest={macro.get('latest_date') or '-'}"),
         )
     )
     data_html = (
@@ -69,24 +67,22 @@ def _refresh_notice_card(*, visible: bool) -> str:
         + f"<li>S&amp;P500 replica: enabled={html.escape(str(data.get('using_sp500_replica') or False))} "
         f"path={html.escape(str(sp500_replica.get('path') or '-'))} "
         f"modified={html.escape(str(sp500_replica.get('modified_at') or '-'))}</li>"
-        + f"<li>S&amp;P500 refresh run: status={html.escape(str(sp500_run.get('status') or '-'))} "
-        f"finished={html.escape(str(sp500_run.get('finished_at') or '-'))} "
-        f"price_rows={html.escape(str(sp500_run.get('price_rows') or 0))} "
-        f"fundamental_rows={html.escape(str(sp500_run.get('fundamental_rows') or 0))} "
-        f"news_rows={html.escape(str(sp500_run.get('news_rows') or 0))}</li>"
         + data_html
-        + f"<li>Market cap: latest={html.escape(str(market_cap.get('latest_date') or '-'))} "
-        f"rows={html.escape(str(market_cap.get('rows') or '-'))}</li>"
-        + f"<li>Snapshot: latest={html.escape(str(snapshot.get('latest_as_of_date') or '-'))} "
-        f"rows={html.escape(str(snapshot.get('rows') or '-'))}</li>"
         + f"<li>Macro source: {html.escape(str(data.get('macro_source') or '-'))}</li>"
         + f"<li>Macro replica: enabled={html.escape(str(data.get('using_macro_replica') or False))} "
         f"path={html.escape(str(macro_replica.get('path') or '-'))} "
         f"modified={html.escape(str(macro_replica.get('modified_at') or '-'))}</li>"
-        + f"<li>Macro refresh run: status={html.escape(str(macro_run.get('status') or '-'))} "
-        f"finished={html.escape(str(macro_run.get('finished_at') or '-'))} "
-        f"macro_rows={html.escape(str(macro_run.get('macro_rows') or 0))}</li>"
     )
+    if sp500_run:
+        data_html += (
+            f"<li>S&amp;P500 refresh run: status={html.escape(str(sp500_run.get('status') or '-'))} "
+            f"finished={html.escape(str(sp500_run.get('finished_at') or '-'))}</li>"
+        )
+    if macro_run:
+        data_html += (
+            f"<li>Macro refresh run: status={html.escape(str(macro_run.get('status') or '-'))} "
+            f"finished={html.escape(str(macro_run.get('finished_at') or '-'))}</li>"
+        )
     exit_code = state.get("last_exit_code") if state.get("last_exit_code") is not None else "-"
     run_meta = (
         f"상태={state.get('status') or 'unknown'} / "

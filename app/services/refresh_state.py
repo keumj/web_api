@@ -109,29 +109,12 @@ def _db_fetchone(connect, query: str) -> tuple[Any, ...] | None:
         return None
 
 
-def _latest_refresh_run(connect) -> dict[str, Any] | None:
-    row = _db_fetchone(
-        connect,
-        """
-        SELECT job_name, mode, status, finished_at, price_rows, fundamental_rows, news_rows, macro_rows, message
-        FROM refresh_runs
-        ORDER BY id DESC
-        LIMIT 1
-        """,
-    )
-    if not row:
-        return None
-    return {
-        "job_name": str(row[0] or ""),
-        "mode": str(row[1] or ""),
-        "status": str(row[2] or ""),
-        "finished_at": str(row[3] or ""),
-        "price_rows": int(row[4] or 0),
-        "fundamental_rows": int(row[5] or 0),
-        "news_rows": int(row[6] or 0),
-        "macro_rows": int(row[7] or 0),
-        "message": str(row[8] or ""),
-    }
+def _latest_value(connect, table: str, column: str) -> tuple[Any, ...] | None:
+    return _db_fetchone(connect, f"SELECT {column} FROM {table} ORDER BY {column} DESC LIMIT 1")
+
+
+def _sqlite_latest_value(path: Path, table: str, column: str) -> tuple[Any, ...] | None:
+    return _sqlite_fetchone(path, f"SELECT {column} FROM {table} ORDER BY {column} DESC LIMIT 1")
 
 
 def collect_git_status(root: Path | None = None) -> dict[str, Any]:
@@ -179,43 +162,25 @@ def collect_data_status(root: Path | None = None) -> dict[str, Any]:
 
     if using_remote_shared_prices_db():
         sp500_source = shared_prices_storage_label()
-        prices = _db_fetchone(_connect_shared_prices_read_db, "SELECT MAX(date), COUNT(*), COUNT(DISTINCT symbol) FROM prices")
-        quarterly = _db_fetchone(
-            _connect_shared_prices_read_db,
-            "SELECT MAX(fiscal_date), COUNT(*), COUNT(DISTINCT symbol), MAX(updated_at) FROM fundamentals_quarterly",
-        )
-        news = _db_fetchone(
-            _connect_shared_prices_read_db,
-            "SELECT MAX(publish_date), COUNT(*), COUNT(DISTINCT ticker) FROM news_articles",
-        )
-        sp500_refresh_run = _latest_refresh_run(_connect_shared_prices_read_db)
+        prices = _latest_value(_connect_shared_prices_read_db, "prices", "date")
+        quarterly = _latest_value(_connect_shared_prices_read_db, "fundamentals_quarterly", "fiscal_date")
+        news = _latest_value(_connect_shared_prices_read_db, "news_articles", "publish_date")
+        sp500_refresh_run = None
     else:
         sp500_source = shared_prices_storage_label(shared_sqlite)
-        prices = _sqlite_fetchone(shared_sqlite, "SELECT MAX(date), COUNT(*), COUNT(DISTINCT symbol) FROM prices")
-        quarterly = _sqlite_fetchone(
-            shared_sqlite,
-            "SELECT MAX(fiscal_date), COUNT(*), COUNT(DISTINCT symbol), MAX(updated_at) FROM fundamentals_quarterly",
-        )
-        news = _sqlite_fetchone(shared_sqlite, "SELECT MAX(publish_date), COUNT(*), COUNT(DISTINCT ticker) FROM news_articles")
+        prices = _sqlite_latest_value(shared_sqlite, "prices", "date")
+        quarterly = _sqlite_latest_value(shared_sqlite, "fundamentals_quarterly", "fiscal_date")
+        news = _sqlite_latest_value(shared_sqlite, "news_articles", "publish_date")
         sp500_refresh_run = None
 
     if using_remote_macro_db():
         macro_source = macro_storage_label()
-        macro = _db_fetchone(_connect_macro_read_db, "SELECT MAX(date), COUNT(*), COUNT(DISTINCT series_id) FROM macro_series")
-        macro_refresh_run = _latest_refresh_run(_connect_macro_read_db)
+        macro = _latest_value(_connect_macro_read_db, "macro_series", "date")
+        macro_refresh_run = None
     else:
         macro_source = macro_storage_label(macro_sqlite)
-        macro = _sqlite_fetchone(macro_sqlite, "SELECT MAX(date), COUNT(*), COUNT(DISTINCT series_id) FROM macro_series")
+        macro = _sqlite_latest_value(macro_sqlite, "macro_series", "date")
         macro_refresh_run = None
-
-    snapshot = _db_fetchone(_connect_shared_prices_read_db, "SELECT MAX(as_of_date), COUNT(*) FROM fundamentals_snapshot") if using_remote_shared_prices_db() else _sqlite_fetchone(
-        shared_sqlite,
-        "SELECT MAX(as_of_date), COUNT(*) FROM fundamentals_snapshot",
-    )
-    market_cap = _db_fetchone(_connect_shared_prices_read_db, "SELECT MAX(date), COUNT(*) FROM prices WHERE market_cap IS NOT NULL") if using_remote_shared_prices_db() else _sqlite_fetchone(
-        shared_sqlite,
-        "SELECT MAX(date), COUNT(*) FROM prices WHERE market_cap IS NOT NULL",
-    )
 
     return {
         "sp500_source": sp500_source,
@@ -252,32 +217,32 @@ def collect_data_status(root: Path | None = None) -> dict[str, Any]:
         "macro_refresh_run": macro_refresh_run,
         "prices": {
             "latest_date": str(prices[0]) if prices and prices[0] else None,
-            "rows": int(prices[1] or 0) if prices else None,
-            "symbols": int(prices[2] or 0) if prices else None,
+            "rows": None,
+            "symbols": None,
         },
         "market_cap": {
-            "latest_date": str(market_cap[0]) if market_cap and market_cap[0] else None,
-            "rows": int(market_cap[1] or 0) if market_cap else None,
+            "latest_date": None,
+            "rows": None,
         },
         "quarterly": {
             "latest_fiscal_date": str(quarterly[0]) if quarterly and quarterly[0] else None,
-            "rows": int(quarterly[1] or 0) if quarterly else None,
-            "symbols": int(quarterly[2] or 0) if quarterly else None,
-            "updated_at": str(quarterly[3]) if quarterly and quarterly[3] else None,
+            "rows": None,
+            "symbols": None,
+            "updated_at": None,
         },
         "snapshot": {
-            "latest_as_of_date": str(snapshot[0]) if snapshot and snapshot[0] else None,
-            "rows": int(snapshot[1] or 0) if snapshot else None,
+            "latest_as_of_date": None,
+            "rows": None,
         },
         "news": {
             "latest_publish_date": str(news[0]) if news and news[0] else None,
-            "rows": int(news[1] or 0) if news else None,
-            "tickers": int(news[2] or 0) if news else None,
+            "rows": None,
+            "tickers": None,
         },
         "macro": {
             "latest_date": str(macro[0]) if macro and macro[0] else None,
-            "rows": int(macro[1] or 0) if macro else None,
-            "series": int(macro[2] or 0) if macro else None,
+            "rows": None,
+            "series": None,
         },
     }
 
@@ -357,8 +322,8 @@ def _data_refresh_completed(state: dict[str, Any]) -> bool:
     return (
         sp500_storage_ready
         and macro_storage_ready
-        and _int_value(prices.get("rows")) > 0
-        and _int_value(macro.get("rows")) > 0
+        and bool(prices.get("latest_date"))
+        and bool(macro.get("latest_date"))
     )
 
 
