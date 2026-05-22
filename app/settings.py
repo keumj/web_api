@@ -65,6 +65,7 @@ class Settings:
     bootstrap_admin_username: str = os.getenv("KEUMJM_BOOTSTRAP_ADMIN_USERNAME", "").strip()
     bootstrap_admin_password: str = os.getenv("KEUMJM_BOOTSTRAP_ADMIN_PASSWORD", "")
     portfolio_db_root: Path = Path(os.getenv("KEUMJ_PORTFOLIO_DB_DIR", "data/portfolio"))
+    use_remote_app_db: bool = _env_bool("KEUMJM_USE_REMOTE_APP_DB", True)
     app_database_url: str = _env_first("KEUMJM_DATABASE_URL", "TURSO_DATABASE_URL")
     app_database_auth_token: str = _env_first("KEUMJM_DATABASE_AUTH_TOKEN", "TURSO_AUTH_TOKEN")
     sp500_database_url: str = _env_first(

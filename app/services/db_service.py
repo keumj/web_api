@@ -9,7 +9,7 @@ from app.settings import settings
 
 
 def using_remote_app_db() -> bool:
-    return bool(settings.app_database_url)
+    return bool(settings.use_remote_app_db and settings.app_database_url)
 
 
 def _local_auth_db_path() -> Path:
