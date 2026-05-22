@@ -413,6 +413,93 @@ def _load_market_context(
     return frame
 
 
+def _load_news_with_reference_prices(
+    conn: sqlite3.Connection,
+    *,
+    start_date: pd.Timestamp,
+    end_date: pd.Timestamp,
+    ticker: str | None = None,
+    keywords: list[str] | None = None,
+    max_reference_date: pd.Timestamp | None = None,
+) -> pd.DataFrame:
+    query = """
+        SELECT
+            id,
+            ticker,
+            publish_date,
+            title,
+            source,
+            sentiment_score,
+            analysis_status
+        FROM news_articles
+        WHERE date(publish_date) >= ?
+          AND date(publish_date) <= ?
+    """
+    params: list[object] = [start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")]
+    ticker_clean = str(ticker or "").strip().upper()
+    if ticker_clean:
+        query += " AND ticker = ?"
+        params.append(ticker_clean)
+    kw_list = keywords or []
+    if kw_list:
+        query += " AND (" + " OR ".join("LOWER(title) LIKE ?" for _ in kw_list) + ")"
+        params.extend([f"%{keyword}%" for keyword in kw_list])
+    query += " ORDER BY publish_date DESC, id DESC"
+    max_rows = _max_news_articles()
+    if max_rows > 0:
+        query += " LIMIT ?"
+        params.append(max_rows)
+
+    news = read_sql_dataframe(conn, query, params=params)
+    if news.empty:
+        return news
+    news["publish_date"] = pd.to_datetime(news["publish_date"], errors="coerce")
+    news = news.dropna(subset=["ticker", "publish_date"]).copy()
+    if news.empty:
+        return news
+    news["ticker"] = news["ticker"].astype(str).str.upper()
+    news["publish_day"] = news["publish_date"].dt.normalize()
+    if "sentiment_score" in news.columns:
+        news["sentiment_score"] = pd.to_numeric(news["sentiment_score"], errors="coerce")
+
+    symbols = sorted(news["ticker"].dropna().astype(str).unique().tolist())
+    min_day = pd.Timestamp(news["publish_day"].min()).strftime("%Y-%m-%d")
+    max_day = pd.Timestamp(news["publish_day"].max()).strftime("%Y-%m-%d")
+    placeholders = ",".join("?" for _ in symbols)
+    price_query = f"""
+        SELECT symbol, date
+        FROM prices
+        WHERE symbol IN ({placeholders})
+          AND date >= ?
+          AND date <= ?
+    """
+    price_params: list[object] = [*symbols, min_day, max_day]
+    if max_reference_date is not None:
+        price_query += " AND date <= ?"
+        price_params.append(pd.Timestamp(max_reference_date).strftime("%Y-%m-%d"))
+    price_query += " ORDER BY symbol ASC, date ASC"
+    prices = read_sql_dataframe(conn, price_query, params=price_params)
+    if prices.empty:
+        news["reference_price_date"] = pd.NaT
+        return news
+
+    prices["date"] = pd.to_datetime(prices["date"], errors="coerce")
+    price_dates: dict[str, pd.DatetimeIndex] = {}
+    for symbol, sub in prices.dropna(subset=["date"]).groupby("symbol", sort=False):
+        price_dates[str(symbol).upper()] = pd.DatetimeIndex(pd.to_datetime(sub["date"], errors="coerce").dropna().sort_values().unique())
+
+    refs: list[pd.Timestamp | pd.NaT] = []
+    for row in news.itertuples(index=False):
+        dates = price_dates.get(str(row.ticker).upper())
+        if dates is None or len(dates) == 0:
+            refs.append(pd.NaT)
+            continue
+        pos = dates.searchsorted(pd.Timestamp(row.publish_day), side="right") - 1
+        refs.append(pd.Timestamp(dates[pos]) if pos >= 0 else pd.NaT)
+    news["reference_price_date"] = refs
+    return news
+
+
 def _load_news_articles_overview(
     conn: sqlite3.Connection,
     *,
@@ -602,7 +689,7 @@ def run_event_study(
     try:
         start_ts, end_ts = _resolve_window(_conn, start_date=start_date, end_date=end_date, lookback_days=lookback_days)
         max_ref_date = _max_reference_date_for_forward(_conn, horizon_days)
-        news = _load_market_context(
+        news = _load_news_with_reference_prices(
             _conn,
             start_date=start_ts,
             end_date=end_ts,
@@ -708,7 +795,7 @@ def run_divergence_scan(
     try:
         start_ts, end_ts = _resolve_window(_conn, start_date=start_date, end_date=end_date, lookback_days=lookback_days)
         max_ref_date = _max_reference_date_for_forward(_conn, 5)
-        news = _load_market_context(
+        news = _load_news_with_reference_prices(
             _conn,
             start_date=start_ts,
             end_date=end_ts,
@@ -879,7 +966,7 @@ def run_sector_spillover_monitor(
     try:
         start_ts, end_ts = _resolve_window(_conn, start_date=start_date, end_date=end_date, lookback_days=lookback_days)
         max_ref_date = _max_reference_date_for_forward(_conn, horizon_days)
-        news = _load_market_context(
+        news = _load_news_with_reference_prices(
             _conn,
             start_date=start_ts,
             end_date=end_ts,
@@ -1014,7 +1101,7 @@ def run_expectation_reset_tracker(
     try:
         start_ts, end_ts = _resolve_window(_conn, start_date=start_date, end_date=end_date, lookback_days=lookback_days)
         max_ref_date = _max_reference_date_for_forward(_conn, 5)
-        news = _load_market_context(
+        news = _load_news_with_reference_prices(
             _conn,
             start_date=start_ts,
             end_date=end_ts,
@@ -1095,7 +1182,7 @@ def run_volatility_regime_after_news(
     try:
         start_ts, end_ts = _resolve_window(_conn, start_date=start_date, end_date=end_date, lookback_days=lookback_days)
         max_ref_date = _max_reference_date_for_forward(_conn, post_days)
-        news = _load_market_context(
+        news = _load_news_with_reference_prices(
             _conn,
             start_date=start_ts,
             end_date=end_ts,
