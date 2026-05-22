@@ -17,12 +17,14 @@ DEFAULT_ARGS = [
     "--news-max-items",
     "8",
     "--news-timeout",
-    "8",
+    "5",
 ]
 
 
 def main(argv: list[str] | None = None) -> int:
-    return refresh_main(DEFAULT_ARGS if argv is None else argv)
+    # Keep Render/manual defaults even when a caller overrides only --target.
+    # argparse uses the last repeated option, so caller-provided values win.
+    return refresh_main([*DEFAULT_ARGS, *(argv or [])])
 
 
 if __name__ == "__main__":

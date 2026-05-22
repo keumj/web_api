@@ -923,6 +923,10 @@ def refresh_news_direct(
             start_day = run_date - timedelta(days=max(int(backfill_days) - 1, 0))
         if start_day > run_date:
             start_day = run_date
+        _log(
+            f"news direct refresh: symbols={len(symbols)} max_publish={max_publish or '-'} "
+            f"start_day={start_day} run_date={run_date} max_items={max_items} timeout={timeout}"
+        )
         for idx, symbol in enumerate(symbols, start=1):
             try:
                 articles = fetch_google_news_articles(
@@ -962,7 +966,7 @@ def refresh_news_direct(
                 """,
                 rows,
             )
-            if idx % 50 == 0:
+            if idx % 25 == 0:
                 _log(f"news progress {idx}/{len(symbols)} total_candidate_rows={total}")
     _log(f"news direct refresh candidate rows={total}")
     return total
