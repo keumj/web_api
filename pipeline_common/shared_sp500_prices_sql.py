@@ -254,6 +254,7 @@ class _RemoteConnectionProxy:
 
 
 def _translate_qmark_params(query: str) -> str:
+    query = re.sub(r"\bdate\(([^()]+)\)", r"\1::date", query)
     return query.replace("?", "%s")
 
 
@@ -403,6 +404,77 @@ def explain_shared_prices_auth_error(exc: Exception) -> RuntimeError:
     return err
 
 
+def _ensure_postgres_news_context_views(conn) -> None:
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_prices_symbol_date ON prices(symbol, date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_news_articles_ticker_publish_date ON news_articles(ticker, publish_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_news_articles_publish_date ON news_articles(publish_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_news_articles_analysis_status_publish_date ON news_articles(analysis_status, publish_date)")
+    conn.execute(
+        """
+        CREATE OR REPLACE VIEW news_articles_price_context AS
+        SELECT
+            n.id,
+            n.ticker,
+            n.publish_date,
+            n.publish_date::date AS publish_day,
+            n.title,
+            n.link,
+            n.source,
+            n.sentiment_score,
+            n.analysis_status,
+            p.date AS price_date,
+            p.open,
+            p.high,
+            p.low,
+            p.close,
+            p.adj_close,
+            p.volume,
+            p.market_cap
+        FROM news_articles AS n
+        LEFT JOIN prices AS p
+            ON p.symbol = n.ticker
+           AND p.date::date = n.publish_date::date
+        """
+    )
+    conn.execute(
+        """
+        CREATE OR REPLACE VIEW news_articles_market_context AS
+        SELECT
+            n.id,
+            n.ticker,
+            n.publish_date,
+            n.publish_date::date AS publish_day,
+            n.title,
+            n.link,
+            n.source,
+            n.sentiment_score,
+            n.analysis_status,
+            p.date AS reference_price_date,
+            CASE
+                WHEN p.date::date = n.publish_date::date THEN 1
+                ELSE 0
+            END AS matched_on_publish_day,
+            p.open,
+            p.high,
+            p.low,
+            p.close,
+            p.adj_close,
+            p.volume,
+            p.market_cap
+        FROM news_articles AS n
+        LEFT JOIN prices AS p
+            ON p.symbol = n.ticker
+           AND p.date::date = (
+                SELECT MAX(p2.date::date)
+                FROM prices AS p2
+                WHERE p2.symbol = n.ticker
+                  AND p2.date::date <= n.publish_date::date
+           )
+        """
+    )
+    conn.commit()
+
+
 def _shared_prices_available(target: Path | str | None = None) -> bool:
     if using_remote_shared_prices_db():
         return True
@@ -484,9 +556,11 @@ def _read_shared_price_csv(path: Path, symbol: str) -> pd.DataFrame | None:
 
 
 def _ensure_prices_table_schema(conn: sqlite3.Connection) -> None:
+    if getattr(conn, "_keumj_remote_postgres", False):
+        _ensure_postgres_news_context_views(conn)
+        return
     if (
-        getattr(conn, "_keumj_remote_postgres", False)
-        or getattr(conn, "_keumj_remote_libsql", False)
+        getattr(conn, "_keumj_remote_libsql", False)
         or conn.__class__.__module__.split(".", 1)[0] == "libsql"
     ):
         return

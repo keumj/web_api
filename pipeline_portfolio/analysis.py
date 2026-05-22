@@ -151,6 +151,15 @@ def _portfolio_storage_label(db_path: Path | str | None = None, *, user_id: str 
     return str(portfolio_db_path(db_path).resolve())
 
 
+def _remote_user_id_candidates(user_id: str) -> list[str]:
+    primary = str(user_id or "")
+    candidates = [primary] if primary else []
+    legacy = re.sub(r"[^A-Za-z0-9_.-]", "_", primary).strip("._-")
+    if legacy and legacy not in candidates:
+        candidates.append(legacy)
+    return candidates
+
+
 def _ensure_remote_portfolio_db() -> None:
     with db_service.app_db_connection() as conn:
         conn.execute(
@@ -306,9 +315,11 @@ def delete_trade(
     if user_id and db_service.using_remote_app_db():
         _ensure_remote_portfolio_db()
         with db_service.app_db_connection() as conn:
+            user_ids = _remote_user_id_candidates(str(user_id))
+            placeholders = ",".join("?" for _ in user_ids)
             conn.execute(
-                "DELETE FROM portfolio_trades WHERE id = ? AND user_id = ?",
-                (trade_id_value, str(user_id)),
+                f"DELETE FROM portfolio_trades WHERE id = ? AND user_id IN ({placeholders})",
+                (trade_id_value, *user_ids),
             )
             conn.commit()
             row = conn.execute("SELECT changes()").fetchone()
@@ -328,14 +339,16 @@ def load_trades(db_path: Path | str | None = None, *, user_id: str | None = None
         _ensure_remote_portfolio_db()
         columns = ["id", "trade_date", "ticker", "side", "quantity", "price", "fees", "notes", "created_at"]
         with db_service.app_db_connection() as conn:
+            user_ids = _remote_user_id_candidates(str(user_id))
+            placeholders = ",".join("?" for _ in user_ids)
             rows = conn.execute(
-                """
+                f"""
                 SELECT id, trade_date, ticker, side, quantity, price, fees, notes, created_at
                 FROM portfolio_trades
-                WHERE user_id = ?
+                WHERE user_id IN ({placeholders})
                 ORDER BY trade_date ASC, CASE WHEN ticker = 'CASH' THEN 0 ELSE 1 END ASC, id ASC
                 """,
-                (str(user_id),),
+                tuple(user_ids),
             ).fetchall()
         frame = pd.DataFrame([tuple(row) for row in rows], columns=columns)
         return _normalize_trades_frame(frame)

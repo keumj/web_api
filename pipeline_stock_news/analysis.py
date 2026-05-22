@@ -13,6 +13,7 @@ import pandas as pd
 
 from pipeline_common.shared_sp500_prices_sql import (
     _connect_shared_prices_read_db,
+    _ensure_prices_table_schema,
     read_sql_dataframe,
     shared_prices_sqlite_path,
 )
@@ -259,7 +260,9 @@ def _db_path(db_path: Path | str | None = None) -> Path:
 
 
 def _connect(db_path: Path | str | None = None) -> sqlite3.Connection:
-    return _connect_shared_prices_read_db(_db_path(db_path))
+    conn = _connect_shared_prices_read_db(_db_path(db_path))
+    _ensure_prices_table_schema(conn)
+    return conn
 
 
 def _split_keywords(value: str | list[str] | tuple[str, ...] | None) -> list[str]:
