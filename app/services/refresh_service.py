@@ -15,6 +15,7 @@ import pandas as pd
 from app.settings import settings
 from app.services import refresh_state
 from app.web import shell
+from pipeline_common.shared_sp500_prices_sql import using_remote_shared_prices_db, using_supabase_shared_prices_db
 from pipeline_portfolio import web_gui as portfolio_web
 
 
@@ -76,7 +77,11 @@ def _refresh_job_defs() -> list[dict[str, object]]:
 
 
 def _using_turso_incremental_refresh() -> bool:
-    return bool(settings.sp500_database_url)
+    return bool(settings.sp500_database_url) and not using_supabase_shared_prices_db()
+
+
+def _using_remote_shared_prices_status() -> bool:
+    return using_remote_shared_prices_db()
 
 
 def _refresh_command(job_id: str) -> list[str]:
@@ -187,7 +192,7 @@ def _file_item(
 
 
 def _stock_snapshot(root_dir: Path) -> dict[str, object]:
-    if _using_turso_incremental_refresh():
+    if _using_remote_shared_prices_status():
         data = _collect_data_status_with_replica_resync(root_dir)
         prices = data.get("prices") if isinstance(data.get("prices"), dict) else {}
         market_cap = data.get("market_cap") if isinstance(data.get("market_cap"), dict) else {}
@@ -233,7 +238,7 @@ def _stock_snapshot(root_dir: Path) -> dict[str, object]:
 
 
 def _quarterly_snapshot(root_dir: Path) -> dict[str, object]:
-    if _using_turso_incremental_refresh():
+    if _using_remote_shared_prices_status():
         data = _collect_data_status_with_replica_resync(root_dir)
         quarterly = data.get("quarterly") if isinstance(data.get("quarterly"), dict) else {}
         snapshot = data.get("snapshot") if isinstance(data.get("snapshot"), dict) else {}
@@ -286,7 +291,7 @@ def _quarterly_snapshot(root_dir: Path) -> dict[str, object]:
 
 
 def _news_snapshot(root_dir: Path) -> dict[str, object]:
-    if _using_turso_incremental_refresh():
+    if _using_remote_shared_prices_status():
         data = _collect_data_status_with_replica_resync(root_dir)
         news = data.get("news") if isinstance(data.get("news"), dict) else {}
         item = {

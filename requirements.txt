@@ -19,6 +19,7 @@ pillow
 cryptography
 libsql
 libsql-client
+psycopg[binary]
 
 requests
 nbformat

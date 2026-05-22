@@ -77,6 +77,13 @@ class Settings:
         "KEUMJ_SP500_TURSO_AUTH_TOKEN",
         "TURSO_SP500_AUTH_TOKEN",
     )
+    sp500_supabase_database_url: str = _env_first("KEUMJ_SP500_SUPABASE_DATABASE_URL")
+    sp500_supabase_host: str = os.getenv("KEUMJ_SP500_SUPABASE_HOST", "").strip()
+    sp500_supabase_port: int = _env_int("KEUMJ_SP500_SUPABASE_PORT", 6543)
+    sp500_supabase_database: str = os.getenv("KEUMJ_SP500_SUPABASE_DATABASE", "postgres").strip()
+    sp500_supabase_user: str = os.getenv("KEUMJ_SP500_SUPABASE_USER", "").strip()
+    sp500_supabase_password: str = os.getenv("KEUMJ_SP500_SUPABASE_PASSWORD", "")
+    sp500_supabase_sslmode: str = os.getenv("KEUMJ_SP500_SUPABASE_SSLMODE", "require").strip() or "require"
     macro_database_url: str = _env_first(
         "KEUMJ_MACRO_DATABASE_URL",
         "KEUMJ_MACRO_TURSO_DATABASE_URL",
@@ -87,6 +94,13 @@ class Settings:
         "KEUMJ_MACRO_TURSO_AUTH_TOKEN",
         "TURSO_MACRO_AUTH_TOKEN",
     )
+    macro_supabase_database_url: str = _env_first("KEUMJ_MACRO_SUPABASE_DATABASE_URL")
+    macro_supabase_host: str = os.getenv("KEUMJ_MACRO_SUPABASE_HOST", "").strip()
+    macro_supabase_port: int = _env_int("KEUMJ_MACRO_SUPABASE_PORT", 6543)
+    macro_supabase_database: str = os.getenv("KEUMJ_MACRO_SUPABASE_DATABASE", "postgres").strip()
+    macro_supabase_user: str = os.getenv("KEUMJ_MACRO_SUPABASE_USER", "").strip()
+    macro_supabase_password: str = os.getenv("KEUMJ_MACRO_SUPABASE_PASSWORD", "")
+    macro_supabase_sslmode: str = os.getenv("KEUMJ_MACRO_SUPABASE_SSLMODE", "require").strip() or "require"
 
     def parsed_allowed_networks(self):
         return tuple(ip_network(cidr, strict=False) for cidr in self.allowed_cidrs)

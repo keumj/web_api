@@ -104,12 +104,60 @@ def macro_database_auth_token() -> str:
     return _env_first("KEUMJ_MACRO_DATABASE_AUTH_TOKEN", "KEUMJ_MACRO_TURSO_AUTH_TOKEN", "TURSO_MACRO_AUTH_TOKEN")
 
 
+def macro_supabase_database_url() -> str:
+    try:
+        from app.settings import settings
+
+        if settings.macro_supabase_database_url:
+            return settings.macro_supabase_database_url
+        if settings.sp500_supabase_database_url:
+            return settings.sp500_supabase_database_url
+    except Exception:
+        pass
+    return _env_first("KEUMJ_MACRO_SUPABASE_DATABASE_URL", "KEUMJ_SP500_SUPABASE_DATABASE_URL")
+
+
+def macro_supabase_config() -> dict[str, object]:
+    try:
+        from app.settings import settings
+
+        host = settings.macro_supabase_host or settings.sp500_supabase_host
+        user = settings.macro_supabase_user or settings.sp500_supabase_user
+        password = settings.macro_supabase_password or settings.sp500_supabase_password
+        database = settings.macro_supabase_database or settings.sp500_supabase_database
+        port = settings.macro_supabase_port or settings.sp500_supabase_port
+        sslmode = settings.macro_supabase_sslmode or settings.sp500_supabase_sslmode
+    except Exception:
+        host = _env_first("KEUMJ_MACRO_SUPABASE_HOST", "KEUMJ_SP500_SUPABASE_HOST")
+        user = _env_first("KEUMJ_MACRO_SUPABASE_USER", "KEUMJ_SP500_SUPABASE_USER")
+        password = _env_first("KEUMJ_MACRO_SUPABASE_PASSWORD", "KEUMJ_SP500_SUPABASE_PASSWORD")
+        database = _env_first("KEUMJ_MACRO_SUPABASE_DATABASE", "KEUMJ_SP500_SUPABASE_DATABASE") or "postgres"
+        port = _env_int("KEUMJ_MACRO_SUPABASE_PORT", _env_int("KEUMJ_SP500_SUPABASE_PORT", 6543))
+        sslmode = _env_first("KEUMJ_MACRO_SUPABASE_SSLMODE", "KEUMJ_SP500_SUPABASE_SSLMODE") or "require"
+    if not host or not user:
+        return {}
+    config: dict[str, object] = {
+        "host": host,
+        "port": int(port),
+        "dbname": database,
+        "user": user,
+        "sslmode": sslmode,
+    }
+    if password:
+        config["password"] = password
+    return config
+
+
+def using_supabase_macro_db() -> bool:
+    return bool(macro_supabase_database_url() or macro_supabase_config())
+
+
 def using_remote_macro_db() -> bool:
-    return bool(macro_database_url())
+    return bool(macro_database_url() or using_supabase_macro_db())
 
 
 def macro_embedded_replica_enabled() -> bool:
-    return bool(macro_database_url()) and _env_bool("KEUMJ_TURSO_EMBEDDED_REPLICA", True)
+    return bool(macro_database_url()) and not using_supabase_macro_db() and _env_bool("KEUMJ_TURSO_EMBEDDED_REPLICA", True)
 
 
 def macro_replica_path() -> Path:
@@ -121,6 +169,12 @@ def macro_replica_path() -> Path:
 
 
 def macro_storage_label(path: str | os.PathLike[str] | None = None) -> str:
+    supabase_url = macro_supabase_database_url()
+    supabase_config = macro_supabase_config()
+    if supabase_url:
+        return "supabase-postgres"
+    if supabase_config:
+        return f"supabase-postgres:{supabase_config.get('host')}:{supabase_config.get('port')}/{supabase_config.get('dbname')}"
     url = macro_database_url()
     if url:
         if macro_embedded_replica_enabled():
@@ -152,6 +206,72 @@ class _RemoteConnectionProxy:
             close()
 
 
+def _translate_qmark_params(query: str) -> str:
+    return query.replace("?", "%s")
+
+
+class _PostgresCursorProxy:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def __getattr__(self, name: str):
+        return getattr(self._cursor, name)
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+
+class _PostgresConnectionProxy:
+    _keumj_remote_postgres = True
+    total_changes = 0
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def __getattr__(self, name: str):
+        return getattr(self._conn, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+    def close(self) -> None:
+        self._conn.close()
+
+    def commit(self) -> None:
+        self._conn.commit()
+
+    def execute(self, query: str, params: list[object] | tuple[object, ...] | None = None):
+        cur = self._conn.execute(_translate_qmark_params(query), tuple(params or ()))
+        return _PostgresCursorProxy(cur)
+
+    def executemany(self, query: str, params_seq):
+        cur = self._conn.cursor()
+        cur.executemany(_translate_qmark_params(query), params_seq)
+        return _PostgresCursorProxy(cur)
+
+
+def _connect_macro_postgres():
+    try:
+        import psycopg
+    except ImportError as exc:
+        raise RuntimeError(
+            "KEUMJ_MACRO_SUPABASE_* is set, but the 'psycopg[binary]' package is not installed."
+        ) from exc
+    url = macro_supabase_database_url()
+    if url:
+        return _PostgresConnectionProxy(psycopg.connect(url))
+    config = macro_supabase_config()
+    if not config:
+        raise RuntimeError("Set KEUMJ_MACRO_SUPABASE_DATABASE_URL or KEUMJ_SP500_SUPABASE_* first.")
+    return _PostgresConnectionProxy(psycopg.connect(**config))
+
+
 def _maybe_sync_macro_replica(conn, replica_path: Path) -> None:
     sync = getattr(conn, "sync", None)
     if sync is None:
@@ -171,6 +291,8 @@ def _maybe_sync_macro_replica(conn, replica_path: Path) -> None:
 
 
 def _connect_macro_read_db(path: str | os.PathLike[str] | None = None):
+    if using_supabase_macro_db():
+        return _connect_macro_postgres()
     url = macro_database_url()
     if url:
         try:
@@ -203,6 +325,12 @@ def _connect_macro_read_db(path: str | os.PathLike[str] | None = None):
 def read_sql_dataframe(conn, query: str, params: list[object] | tuple[object, ...] | None = None) -> pd.DataFrame:
     if isinstance(conn, sqlite3.Connection):
         return pd.read_sql_query(query, conn, params=params)
+    if getattr(conn, "_keumj_remote_postgres", False):
+        cur = conn.execute(query, tuple(params or ()))
+        rows = cur.fetchall()
+        description = getattr(cur, "description", None) or []
+        columns = [str(col[0]) for col in description]
+        return pd.DataFrame([tuple(row) for row in rows], columns=columns)
     cur = conn.execute(query, tuple(params or ()))
     rows = cur.fetchall()
     description = getattr(cur, "description", None) or []
@@ -240,7 +368,11 @@ def fred_api_key() -> str:
 
 
 def ensure_macro_schema(conn: sqlite3.Connection) -> None:
-    if getattr(conn, "_keumj_remote_libsql", False) or conn.__class__.__module__.split(".", 1)[0] == "libsql":
+    if (
+        getattr(conn, "_keumj_remote_postgres", False)
+        or getattr(conn, "_keumj_remote_libsql", False)
+        or conn.__class__.__module__.split(".", 1)[0] == "libsql"
+    ):
         return
     conn.execute(
         """

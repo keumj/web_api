@@ -152,12 +152,58 @@ def shared_prices_database_auth_token() -> str:
     return _env_first("KEUMJ_SP500_DATABASE_AUTH_TOKEN", "KEUMJ_SP500_TURSO_AUTH_TOKEN", "TURSO_SP500_AUTH_TOKEN")
 
 
+def shared_prices_supabase_database_url() -> str:
+    try:
+        from app.settings import settings
+
+        if settings.sp500_supabase_database_url:
+            return settings.sp500_supabase_database_url
+    except Exception:
+        pass
+    return _env_first("KEUMJ_SP500_SUPABASE_DATABASE_URL")
+
+
+def shared_prices_supabase_config() -> dict[str, object]:
+    try:
+        from app.settings import settings
+
+        host = settings.sp500_supabase_host
+        user = settings.sp500_supabase_user
+        password = settings.sp500_supabase_password
+        database = settings.sp500_supabase_database
+        port = settings.sp500_supabase_port
+        sslmode = settings.sp500_supabase_sslmode
+    except Exception:
+        host = os.getenv("KEUMJ_SP500_SUPABASE_HOST", "").strip()
+        user = os.getenv("KEUMJ_SP500_SUPABASE_USER", "").strip()
+        password = os.getenv("KEUMJ_SP500_SUPABASE_PASSWORD", "")
+        database = os.getenv("KEUMJ_SP500_SUPABASE_DATABASE", "postgres").strip() or "postgres"
+        port = _env_int("KEUMJ_SP500_SUPABASE_PORT", 6543)
+        sslmode = os.getenv("KEUMJ_SP500_SUPABASE_SSLMODE", "require").strip() or "require"
+    if not host or not user:
+        return {}
+    config: dict[str, object] = {
+        "host": host,
+        "port": int(port),
+        "dbname": database,
+        "user": user,
+        "sslmode": sslmode,
+    }
+    if password:
+        config["password"] = password
+    return config
+
+
+def using_supabase_shared_prices_db() -> bool:
+    return bool(shared_prices_supabase_database_url() or shared_prices_supabase_config())
+
+
 def using_remote_shared_prices_db() -> bool:
-    return bool(shared_prices_database_url())
+    return bool(shared_prices_database_url() or using_supabase_shared_prices_db())
 
 
 def shared_prices_embedded_replica_enabled() -> bool:
-    return bool(shared_prices_database_url()) and _env_bool("KEUMJ_TURSO_EMBEDDED_REPLICA", True)
+    return bool(shared_prices_database_url()) and not using_supabase_shared_prices_db() and _env_bool("KEUMJ_TURSO_EMBEDDED_REPLICA", True)
 
 
 def shared_prices_replica_path() -> Path:
@@ -169,6 +215,12 @@ def shared_prices_replica_path() -> Path:
 
 
 def shared_prices_storage_label(target: Path | str | None = None) -> str:
+    supabase_url = shared_prices_supabase_database_url()
+    supabase_config = shared_prices_supabase_config()
+    if supabase_url:
+        return "supabase-postgres"
+    if supabase_config:
+        return f"supabase-postgres:{supabase_config.get('host')}:{supabase_config.get('port')}/{supabase_config.get('dbname')}"
     url = shared_prices_database_url()
     if url:
         if shared_prices_embedded_replica_enabled():
@@ -201,6 +253,80 @@ class _RemoteConnectionProxy:
             close()
 
 
+def _translate_qmark_params(query: str) -> str:
+    return query.replace("?", "%s")
+
+
+class _PostgresCursorProxy:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def __getattr__(self, name: str):
+        return getattr(self._cursor, name)
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+
+class _PostgresConnectionProxy:
+    _keumj_remote_postgres = True
+    total_changes = 0
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def __getattr__(self, name: str):
+        return getattr(self._conn, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+    def close(self) -> None:
+        self._conn.close()
+
+    def commit(self) -> None:
+        self._conn.commit()
+
+    def rollback(self) -> None:
+        self._conn.rollback()
+
+    def execute(self, query: str, params: list[object] | tuple[object, ...] | None = None):
+        normalized = query.strip().upper()
+        if normalized == "BEGIN IMMEDIATE":
+            query = "BEGIN"
+        cur = self._conn.execute(_translate_qmark_params(query), tuple(params or ()))
+        return _PostgresCursorProxy(cur)
+
+    def executemany(self, query: str, params_seq):
+        cur = self._conn.cursor()
+        cur.executemany(_translate_qmark_params(query), params_seq)
+        return _PostgresCursorProxy(cur)
+
+
+def _connect_shared_prices_postgres():
+    try:
+        import psycopg
+    except ImportError as exc:
+        raise RuntimeError(
+            "KEUMJ_SP500_SUPABASE_* is set, but the 'psycopg[binary]' package is not installed."
+        ) from exc
+    url = shared_prices_supabase_database_url()
+    if url:
+        return _PostgresConnectionProxy(psycopg.connect(url))
+    config = shared_prices_supabase_config()
+    if not config:
+        raise RuntimeError(
+            "Set KEUMJ_SP500_SUPABASE_DATABASE_URL or KEUMJ_SP500_SUPABASE_HOST/USER/PASSWORD."
+        )
+    return _PostgresConnectionProxy(psycopg.connect(**config))
+
+
 def _maybe_sync_shared_replica(conn, replica_path: Path) -> None:
     sync = getattr(conn, "sync", None)
     if sync is None:
@@ -220,6 +346,8 @@ def _maybe_sync_shared_replica(conn, replica_path: Path) -> None:
 
 
 def _connect_shared_prices_read_db(target: Path | str | None = None):
+    if using_supabase_shared_prices_db():
+        return _connect_shared_prices_postgres()
     url = shared_prices_database_url()
     if url:
         try:
@@ -253,6 +381,12 @@ def _connect_shared_prices_read_db(target: Path | str | None = None):
 def read_sql_dataframe(conn, query: str, params: list[object] | tuple[object, ...] | None = None) -> pd.DataFrame:
     if isinstance(conn, sqlite3.Connection):
         return pd.read_sql_query(query, conn, params=params)
+    if getattr(conn, "_keumj_remote_postgres", False):
+        cur = conn.execute(query, tuple(params or ()))
+        rows = cur.fetchall()
+        description = getattr(cur, "description", None) or []
+        columns = [str(col[0]) for col in description]
+        return pd.DataFrame([tuple(row) for row in rows], columns=columns)
     cur = conn.execute(query, tuple(params or ()))
     rows = cur.fetchall()
     description = getattr(cur, "description", None) or []
@@ -350,7 +484,11 @@ def _read_shared_price_csv(path: Path, symbol: str) -> pd.DataFrame | None:
 
 
 def _ensure_prices_table_schema(conn: sqlite3.Connection) -> None:
-    if getattr(conn, "_keumj_remote_libsql", False) or conn.__class__.__module__.split(".", 1)[0] == "libsql":
+    if (
+        getattr(conn, "_keumj_remote_postgres", False)
+        or getattr(conn, "_keumj_remote_libsql", False)
+        or conn.__class__.__module__.split(".", 1)[0] == "libsql"
+    ):
         return
     conn.execute(
         """
