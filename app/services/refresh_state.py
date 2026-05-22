@@ -117,6 +117,14 @@ def _sqlite_latest_value(path: Path, table: str, column: str) -> tuple[Any, ...]
     return _sqlite_fetchone(path, f"SELECT {column} FROM {table} ORDER BY {column} DESC LIMIT 1")
 
 
+def _news_summary(connect) -> tuple[Any, ...] | None:
+    return _db_fetchone(connect, "SELECT MAX(publish_date), COUNT(*), COUNT(DISTINCT ticker) FROM news_articles")
+
+
+def _sqlite_news_summary(path: Path) -> tuple[Any, ...] | None:
+    return _sqlite_fetchone(path, "SELECT MAX(publish_date), COUNT(*), COUNT(DISTINCT ticker) FROM news_articles")
+
+
 def collect_git_status(root: Path | None = None) -> dict[str, Any]:
     root_dir = root or settings.project_root
     try:
@@ -164,13 +172,13 @@ def collect_data_status(root: Path | None = None) -> dict[str, Any]:
         sp500_source = shared_prices_storage_label()
         prices = _latest_value(_connect_shared_prices_read_db, "prices", "date")
         quarterly = _latest_value(_connect_shared_prices_read_db, "fundamentals_quarterly", "fiscal_date")
-        news = _latest_value(_connect_shared_prices_read_db, "news_articles", "publish_date")
+        news = _news_summary(_connect_shared_prices_read_db)
         sp500_refresh_run = None
     else:
         sp500_source = shared_prices_storage_label(shared_sqlite)
         prices = _sqlite_latest_value(shared_sqlite, "prices", "date")
         quarterly = _sqlite_latest_value(shared_sqlite, "fundamentals_quarterly", "fiscal_date")
-        news = _sqlite_latest_value(shared_sqlite, "news_articles", "publish_date")
+        news = _sqlite_news_summary(shared_sqlite)
         sp500_refresh_run = None
 
     if using_remote_macro_db():
@@ -236,8 +244,8 @@ def collect_data_status(root: Path | None = None) -> dict[str, Any]:
         },
         "news": {
             "latest_publish_date": str(news[0]) if news and news[0] else None,
-            "rows": None,
-            "tickers": None,
+            "rows": int(news[1] or 0) if news and len(news) > 1 else None,
+            "tickers": int(news[2] or 0) if news and len(news) > 2 else None,
         },
         "macro": {
             "latest_date": str(macro[0]) if macro and macro[0] else None,

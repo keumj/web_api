@@ -15,7 +15,7 @@ import pandas as pd
 from app.settings import settings
 from app.services import refresh_state
 from app.web import shell
-from pipeline_common.shared_sp500_prices_sql import using_remote_shared_prices_db, using_supabase_shared_prices_db
+from pipeline_common.shared_sp500_prices_sql import _connect_shared_prices_read_db, using_remote_shared_prices_db, using_supabase_shared_prices_db
 from pipeline_portfolio import web_gui as portfolio_web
 
 
@@ -76,6 +76,10 @@ def _refresh_job_defs() -> list[dict[str, object]]:
     ]
 
 
+def _using_remote_incremental_refresh() -> bool:
+    return using_remote_shared_prices_db()
+
+
 def _using_turso_incremental_refresh() -> bool:
     return bool(settings.sp500_database_url) and not using_supabase_shared_prices_db()
 
@@ -85,8 +89,9 @@ def _using_remote_shared_prices_status() -> bool:
 
 
 def _refresh_command(job_id: str) -> list[str]:
-    if _using_turso_incremental_refresh() and job_id in TURSO_TARGET_BY_JOB:
-        script = settings.project_root / "scripts" / "refresh_turso_daily.py"
+    if _using_remote_incremental_refresh() and job_id in TURSO_TARGET_BY_JOB:
+        script_name = "refresh_supabase_daily.py" if using_supabase_shared_prices_db() else "refresh_turso_daily.py"
+        script = settings.project_root / "scripts" / script_name
         return [sys.executable, "-u", str(script), "--mode", "direct", "--target", TURSO_TARGET_BY_JOB[job_id]]
     return portfolio_web._refresh_subprocess_command(job_id)
 
@@ -153,6 +158,14 @@ def _sqlite_fetchone(path: Path, query: str) -> tuple[object, ...] | None:
         return None
     try:
         with sqlite3.connect(path) as conn:
+            return conn.execute(query).fetchone()
+    except Exception:
+        return None
+
+
+def _remote_fetchone(query: str) -> tuple[object, ...] | None:
+    try:
+        with _connect_shared_prices_read_db() as conn:
             return conn.execute(query).fetchone()
     except Exception:
         return None
@@ -294,17 +307,21 @@ def _news_snapshot(root_dir: Path) -> dict[str, object]:
     if _using_remote_shared_prices_status():
         data = _collect_data_status_with_replica_resync(root_dir)
         news = data.get("news") if isinstance(data.get("news"), dict) else {}
+        row = _remote_fetchone("SELECT COUNT(*), COUNT(DISTINCT ticker), MAX(publish_date) FROM news_articles")
+        total_rows = int(row[0]) if row and row[0] is not None else news.get("rows")
+        ticker_count = int(row[1]) if row and row[1] is not None else news.get("tickers")
+        max_publish = str(row[2]) if row and row[2] else news.get("latest_publish_date")
         item = {
             "label": "Turso 뉴스 테이블",
             "path": str(data.get("sp500_source") or "-"),
             "exists": True,
-            "latest_value": news.get("latest_publish_date"),
-            "rows": news.get("rows"),
+            "latest_value": max_publish,
+            "rows": total_rows,
             "modified_at": None,
-            "detail": f"tickers={news.get('tickers') or 0}, table=news_articles",
+            "detail": f"tickers={ticker_count or 0}, table=news_articles",
         }
         return {
-            "summary": f"Turso 최신 publish_date {news.get('latest_publish_date') or '-'} / 기사 {news.get('rows') or 0}건",
+            "summary": f"Remote latest publish_date {max_publish or '-'} / articles {total_rows or 0}",
             "items": [item],
         }
 
@@ -402,7 +419,7 @@ def _run_job(job: RefreshJob) -> None:
         proc = subprocess.Popen(
             job.command,
             cwd=str(root),
-            env={**os.environ, "KEUMJ_TURSO_EMBEDDED_REPLICA": "false"} if _using_turso_incremental_refresh() else None,
+            env={**os.environ, "KEUMJ_TURSO_EMBEDDED_REPLICA": "false"} if _using_remote_incremental_refresh() else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
