@@ -29,5 +29,28 @@ For data refresh and upload workflows:
   prepared statement behavior, and SQLite-to-PostgreSQL type/SQL differences
   across all affected targets.
 
+Data store policy:
+
+- Use local SQLite as the recoverable local source of truth for development,
+  backup, and repair workflows.
+- Use Supabase/PostgreSQL for shared reference data such as prices, market
+  caps, fundamentals, news, and macro series.
+- If Turso becomes available again, use it for per-user or per-session data,
+  not for large shared reference datasets.
+- Good Turso candidates include user-specific run history, saved parameters,
+  recent selections, favorites, lightweight summaries, and small cached result
+  tables.
+- Do not store large shared market/news/macro datasets in Turso. Avoid storing
+  full raw DataFrames or bulky analysis artifacts there.
+- When implementing Turso-backed user history, include a stable user key and
+  enough metadata to understand the run: module, run type, created timestamp,
+  params JSON, summary JSON, and the reference data freshness used by the run.
+- Turso must be an optional enhancement. If Turso is unavailable or rate
+  limited, the app should fall back gracefully and continue without historical
+  user runs.
+- Keep storage responsibilities separate: local SQLite for local truth and
+  recovery, Supabase for shared data serving, Turso for lightweight personal
+  state.
+
 Do not use this guidance to justify unrelated refactors. Keep edits scoped to
 the demonstrated failure pattern and its obvious siblings.
