@@ -413,6 +413,46 @@ def _load_market_context(
     return frame
 
 
+def _load_news_articles_overview(
+    conn: sqlite3.Connection,
+    *,
+    start_date: pd.Timestamp,
+    end_date: pd.Timestamp,
+    ticker: str | None = None,
+    keywords: list[str] | None = None,
+) -> pd.DataFrame:
+    query = """
+        SELECT
+            id,
+            ticker,
+            publish_date,
+            title,
+            source
+        FROM news_articles
+        WHERE date(publish_date) >= ?
+          AND date(publish_date) <= ?
+    """
+    params: list[object] = [start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")]
+    ticker_clean = str(ticker or "").strip().upper()
+    if ticker_clean:
+        query += " AND ticker = ?"
+        params.append(ticker_clean)
+    kw_list = keywords or []
+    if kw_list:
+        query += " AND (" + " OR ".join("LOWER(title) LIKE ?" for _ in kw_list) + ")"
+        params.extend([f"%{keyword}%" for keyword in kw_list])
+    query += " ORDER BY publish_date DESC, id DESC"
+    max_rows = _max_news_articles()
+    if max_rows > 0:
+        query += " LIMIT ?"
+        params.append(max_rows)
+    frame = read_sql_dataframe(conn, query, params=params)
+    if frame.empty:
+        return frame
+    frame["publish_date"] = pd.to_datetime(frame["publish_date"], errors="coerce")
+    return frame
+
+
 def _load_prices(
     conn: sqlite3.Connection,
     *,
@@ -751,7 +791,7 @@ def run_topic_model(
     _conn = conn if conn is not None else _connect(db_path)
     try:
         start_ts, end_ts = _resolve_window(_conn, start_date=start_date, end_date=end_date, lookback_days=lookback_days)
-        news = _load_market_context(_conn, start_date=start_ts, end_date=end_ts, ticker=ticker, keywords=keyword_list)
+        news = _load_news_articles_overview(_conn, start_date=start_ts, end_date=end_ts, ticker=ticker, keywords=keyword_list)
     finally:
         if conn is None:
             _conn.close()
@@ -1145,7 +1185,7 @@ def build_news_overview(
     _conn = conn if conn is not None else _connect(db_path)
     try:
         start_ts, end_ts = _resolve_window(_conn, start_date=start_date, end_date=end_date, lookback_days=lookback_days)
-        news = _load_market_context(_conn, start_date=start_ts, end_date=end_ts, ticker=ticker, keywords=keyword_list)
+        news = _load_news_articles_overview(_conn, start_date=start_ts, end_date=end_ts, ticker=ticker, keywords=keyword_list)
     finally:
         if conn is None:
             _conn.close()
@@ -1166,7 +1206,7 @@ def build_news_overview(
 
     daily_counts = (
         overview.groupby("publish_day", dropna=False)
-        .agg(article_count=("id", "count"))
+        .agg(article_count=("ticker", "size"))
         .reset_index()
         .rename(columns={"publish_day": "date"})
         .sort_values("date", ascending=False)
@@ -1174,7 +1214,7 @@ def build_news_overview(
     )
     top_tickers = (
         overview.groupby("ticker", dropna=False)
-        .agg(article_count=("id", "count"), latest_publish_date=("publish_date", "max"))
+        .agg(article_count=("ticker", "size"), latest_publish_date=("publish_date", "max"))
         .reset_index()
         .sort_values(["article_count", "latest_publish_date", "ticker"], ascending=[False, False, True])
         .head(10)
@@ -1184,7 +1224,7 @@ def build_news_overview(
         top_tickers["latest_publish_date"] = pd.to_datetime(top_tickers["latest_publish_date"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M:%S")
     top_sectors = (
         overview.groupby("sector", dropna=False)
-        .agg(article_count=("id", "count"), ticker_count=("ticker", "nunique"))
+        .agg(article_count=("sector", "size"), ticker_count=("ticker", "nunique"))
         .reset_index()
         .sort_values(["article_count", "ticker_count", "sector"], ascending=[False, False, True])
         .head(10)
@@ -1192,7 +1232,7 @@ def build_news_overview(
     )
     top_sources = (
         overview.groupby("source", dropna=False)
-        .agg(article_count=("id", "count"), ticker_count=("ticker", "nunique"))
+        .agg(article_count=("source", "size"), ticker_count=("ticker", "nunique"))
         .reset_index()
         .sort_values(["article_count", "ticker_count", "source"], ascending=[False, False, True])
         .head(10)

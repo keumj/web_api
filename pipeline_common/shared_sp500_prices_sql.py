@@ -319,13 +319,13 @@ def _connect_shared_prices_postgres():
         ) from exc
     url = shared_prices_supabase_database_url()
     if url:
-        return _PostgresConnectionProxy(psycopg.connect(url))
+        return _PostgresConnectionProxy(psycopg.connect(url, prepare_threshold=None))
     config = shared_prices_supabase_config()
     if not config:
         raise RuntimeError(
             "Set KEUMJ_SP500_SUPABASE_DATABASE_URL or KEUMJ_SP500_SUPABASE_HOST/USER/PASSWORD."
         )
-    return _PostgresConnectionProxy(psycopg.connect(**config))
+    return _PostgresConnectionProxy(psycopg.connect(**config, prepare_threshold=None))
 
 
 def _maybe_sync_shared_replica(conn, replica_path: Path) -> None:

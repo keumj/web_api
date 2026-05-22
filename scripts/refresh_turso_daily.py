@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import sqlite3
+import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -16,7 +17,9 @@ if str(ROOT) not in sys.path:
 
 from pipeline_common.refresh_sp500_shared_prices import (  # noqa: E402
     DEFAULT_COMPONENTS_CSV,
+    DEFAULT_DATA_DIR,
     DEFAULT_START_DATE,
+    DEFAULT_SHARED_DB_ROOT,
     _build_market_cap_frame_from_latest_shares,
     _download_shares_histories,
     _download_symbol_frames,
@@ -25,6 +28,7 @@ from pipeline_common.refresh_sp500_shared_prices import (  # noqa: E402
     _overlay_fresh_on_existing,
     _read_symbol_list,
     _share_histories_to_wide,
+    refresh_sp500_shared_prices,
 )
 from pipeline_common.shared_fundamentals import derive_shared_fundamental_metrics  # noqa: E402
 from pipeline_common.shared_sp500_prices_sql import (  # noqa: E402
@@ -33,6 +37,7 @@ from pipeline_common.shared_sp500_prices_sql import (  # noqa: E402
     shared_prices_database_url,
     shared_prices_sqlite_path,
     using_remote_shared_prices_db,
+    using_supabase_shared_prices_db,
 )
 from pipeline_macro.macro_data_store import (  # noqa: E402
     ALL_SPECS,
@@ -42,6 +47,7 @@ from pipeline_macro.macro_data_store import (  # noqa: E402
     macro_db_path,
     normalize_series,
     using_remote_macro_db,
+    using_supabase_macro_db,
 )
 from pipeline_macro.refresh_macro_prices import _load_series  # noqa: E402
 from pipeline_common.news_data import fetch_google_news_articles  # noqa: E402
@@ -52,7 +58,9 @@ from pipeline_common.refresh_sp500_news import (  # noqa: E402
     _article_is_in_window,
     _article_query_for_symbol,
     _publish_date_text,
+    sync_sp500_news_articles,
 )
+from pipeline_macro.refresh_macro_prices import refresh_macro_prices  # noqa: E402
 from pipeline_common.refresh_shared_quarterly_fundamentals import (  # noqa: E402
     _extract_quarterly_rows,
     _filter_rows_newer_than_db,
@@ -74,6 +82,10 @@ class JobCounts:
 
 def _log(message: str) -> None:
     print(f"[refresh-turso-daily] {message}", flush=True)
+
+
+def _remote_label() -> str:
+    return "Supabase" if (using_supabase_shared_prices_db() or using_supabase_macro_db()) else "Turso"
 
 
 def _env_first(*names: str) -> str:
@@ -129,6 +141,7 @@ def _ensure_remote_prices_schema(conn) -> None:
             )
             """
         )
+        _ensure_postgres_news_article_ids(conn)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS fundamentals_snapshot (
@@ -182,9 +195,17 @@ def _ensure_remote_prices_schema(conn) -> None:
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_prices_symbol_date ON prices(symbol, date)")
+        _ensure_postgres_unique_index(conn, "prices", ("symbol", "date"), "ux_prices_symbol_date")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_prices_date ON prices(date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_fundamentals_snapshot_as_of_date ON fundamentals_snapshot(as_of_date)")
+        _ensure_postgres_unique_index(conn, "fundamentals_snapshot", ("symbol",), "ux_fundamentals_snapshot_symbol")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_fundamentals_quarterly_symbol_fiscal_date ON fundamentals_quarterly(symbol, fiscal_date)")
+        _ensure_postgres_unique_index(
+            conn,
+            "fundamentals_quarterly",
+            ("symbol", "fiscal_date"),
+            "ux_fundamentals_quarterly_symbol_fiscal_date",
+        )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_fundamentals_quarterly_fiscal_date ON fundamentals_quarterly(fiscal_date)")
         _ensure_postgres_news_context_views(conn)
         conn.commit()
@@ -366,6 +387,7 @@ def _ensure_remote_macro_schema(conn) -> None:
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_macro_series_date ON macro_series(date)")
+        _ensure_postgres_unique_index(conn, "macro_series", ("series_id", "date"), "ux_macro_series_series_id_date")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS macro_metadata (
@@ -380,6 +402,7 @@ def _ensure_remote_macro_schema(conn) -> None:
             )
             """
         )
+        _ensure_postgres_unique_index(conn, "macro_metadata", ("series_id",), "ux_macro_metadata_series_id")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS refresh_runs (
@@ -447,6 +470,55 @@ def _ensure_remote_macro_schema(conn) -> None:
     )
     _ensure_refresh_run_columns(conn)
     conn.commit()
+
+
+def _ensure_postgres_news_article_ids(conn) -> None:
+    if not _is_postgres_conn(conn):
+        return
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS news_articles_id_seq")
+    conn.execute(
+        """
+        SELECT setval(
+            'news_articles_id_seq',
+            GREATEST(COALESCE((SELECT MAX(id) FROM news_articles), 0), 1),
+            COALESCE((SELECT MAX(id) FROM news_articles), 0) > 0
+        )
+        """
+    )
+    conn.execute("UPDATE news_articles SET id = nextval('news_articles_id_seq') WHERE id IS NULL")
+    conn.execute(
+        """
+        SELECT setval(
+            'news_articles_id_seq',
+            GREATEST(COALESCE((SELECT MAX(id) FROM news_articles), 0), 1),
+            COALESCE((SELECT MAX(id) FROM news_articles), 0) > 0
+        )
+        """
+    )
+    conn.execute("ALTER TABLE news_articles ALTER COLUMN id SET DEFAULT nextval('news_articles_id_seq')")
+    conn.execute("ALTER SEQUENCE news_articles_id_seq OWNED BY news_articles.id")
+    _ensure_postgres_unique_index(conn, "news_articles", ("id",), "ux_news_articles_id")
+
+
+def _ensure_postgres_unique_index(conn, table: str, columns: tuple[str, ...], index_name: str) -> None:
+    if not _is_postgres_conn(conn):
+        return
+    quoted_columns = ", ".join(columns)
+    equality_sql = " AND ".join(f"older.{col} = newer.{col}" for col in columns)
+    conn.execute(
+        f"""
+        DELETE FROM {table} AS older
+        USING {table} AS newer
+        WHERE older.ctid < newer.ctid
+          AND {equality_sql}
+        """
+    )
+    conn.execute(
+        f"""
+        CREATE UNIQUE INDEX IF NOT EXISTS {index_name}
+        ON {table}({quoted_columns})
+        """
+    )
 
 
 def _ensure_refresh_run_columns(conn) -> None:
@@ -917,15 +989,13 @@ def refresh_news_direct(
     with _connect_shared_prices_read_db() as conn:
         _ensure_remote_prices_schema(conn)
         max_publish = _table_max_value(conn, "news_articles", "publish_date")
-        if max_publish:
-            start_day = pd.Timestamp(max_publish).date() - timedelta(days=max(int(overlap_days), 0))
-        else:
-            start_day = run_date - timedelta(days=max(int(backfill_days) - 1, 0))
+        start_day = run_date - timedelta(days=max(int(backfill_days) - 1, 0))
         if start_day > run_date:
             start_day = run_date
         _log(
             f"news direct refresh: symbols={len(symbols)} max_publish={max_publish or '-'} "
-            f"start_day={start_day} run_date={run_date} max_items={max_items} timeout={timeout}"
+            f"backfill_start_day={start_day} run_date={run_date} max_items={max_items} timeout={timeout} "
+            "mode=fixed-backfill-dedup-by-ticker-link"
         )
         for idx, symbol in enumerate(symbols, start=1):
             try:
@@ -1071,9 +1141,9 @@ def refresh_macro_direct(*, default_years: int, rewrite_series: set[str] | None 
     return total
 
 
-def upload_local_prices_to_turso(*, local_db: Path, overlap_days: int) -> int:
-    if not shared_prices_database_url():
-        raise RuntimeError("KEUMJ_SP500_DATABASE_URL must be set for local upload.")
+def upload_local_prices_to_remote(*, local_db: Path, overlap_days: int) -> int:
+    if not using_remote_shared_prices_db():
+        raise RuntimeError("KEUMJ_SP500_DATABASE_URL or KEUMJ_SP500_SUPABASE_* must be set for local upload.")
     if not local_db.is_file():
         raise FileNotFoundError(f"Local S&P500 SQLite DB not found: {local_db}")
     with _connect_shared_prices_read_db() as remote, sqlite3.connect(local_db) as local:
@@ -1112,15 +1182,15 @@ def upload_local_prices_to_turso(*, local_db: Path, overlap_days: int) -> int:
             market_cap_rows,
         )
         _log(
-            f"local S&P500 upload old_max={old_max or '-'} "
+            f"local S&P500 upload to {_remote_label()} old_max={old_max or '-'} "
             f"price_candidate_rows={attempted} market_cap_candidate_rows={len(market_cap_rows)}"
         )
         return attempted
 
 
-def upload_local_fundamentals_to_turso(*, local_db: Path) -> int:
-    if not shared_prices_database_url():
-        raise RuntimeError("KEUMJ_SP500_DATABASE_URL must be set for local fundamentals upload.")
+def upload_local_fundamentals_to_remote(*, local_db: Path) -> int:
+    if not using_remote_shared_prices_db():
+        raise RuntimeError("KEUMJ_SP500_DATABASE_URL or KEUMJ_SP500_SUPABASE_* must be set for local fundamentals upload.")
     if not local_db.is_file():
         raise FileNotFoundError(f"Local S&P500 SQLite DB not found: {local_db}")
     total = 0
@@ -1195,9 +1265,9 @@ def upload_local_fundamentals_to_turso(*, local_db: Path) -> int:
     return total
 
 
-def upload_local_news_to_turso(*, local_db: Path, overlap_days: int) -> int:
-    if not shared_prices_database_url():
-        raise RuntimeError("KEUMJ_SP500_DATABASE_URL must be set for local news upload.")
+def upload_local_news_to_remote(*, local_db: Path, overlap_days: int) -> int:
+    if not using_remote_shared_prices_db():
+        raise RuntimeError("KEUMJ_SP500_DATABASE_URL or KEUMJ_SP500_SUPABASE_* must be set for local news upload.")
     if not local_db.is_file():
         raise FileNotFoundError(f"Local S&P500 SQLite DB not found: {local_db}")
     with _connect_shared_prices_read_db() as remote, sqlite3.connect(local_db) as local:
@@ -1205,18 +1275,12 @@ def upload_local_news_to_turso(*, local_db: Path, overlap_days: int) -> int:
         if not _local_has_table(local, "news_articles"):
             _log("local news_articles table not found; skipping news upload")
             return 0
-        old_max = _table_max_value(remote, "news_articles", "publish_date") if _remote_has_table(remote, "news_articles") else None
         query = """
             SELECT ticker, publish_date, title, link, source, sentiment_score, analysis_status
             FROM news_articles
         """
-        params: list[object] = []
-        if old_max:
-            cutoff = _overlap_fetch_start_date("1900-01-01", old_max, overlap_days)
-            query += " WHERE date(publish_date) >= date(?)"
-            params.append(cutoff)
         query += " ORDER BY publish_date, ticker, id"
-        rows = [tuple(row) for row in local.execute(query, params).fetchall()]
+        rows = [tuple(row) for row in local.execute(query).fetchall()]
         attempted = _executemany_chunks(
             remote,
             """
@@ -1229,13 +1293,16 @@ def upload_local_news_to_turso(*, local_db: Path, overlap_days: int) -> int:
             """,
             [(*row, row[0], row[1], row[3]) for row in rows],
         )
-        _log(f"local news upload old_max={old_max or '-'} candidate rows={attempted}")
+        _log(
+            f"local news upload to {_remote_label()} local_candidate_rows={attempted} "
+            "mode=all-local-dedup-by-ticker-publish-date-link"
+        )
         return attempted
 
 
-def upload_local_macro_to_turso(*, local_db: Path) -> int:
-    if not macro_database_url():
-        raise RuntimeError("KEUMJ_MACRO_DATABASE_URL must be set for local upload.")
+def upload_local_macro_to_remote(*, local_db: Path) -> int:
+    if not using_remote_macro_db():
+        raise RuntimeError("KEUMJ_MACRO_DATABASE_URL or KEUMJ_MACRO_SUPABASE_* must be set for local upload.")
     if not local_db.is_file():
         raise FileNotFoundError(f"Local macro SQLite DB not found: {local_db}")
     total = 0
@@ -1256,8 +1323,75 @@ def upload_local_macro_to_turso(*, local_db: Path) -> int:
             rows = [tuple(row) for row in local.execute(query, params).fetchall()]
             source = str(rows[-1][5]) if rows else "local_sqlite"
             total += _upsert_macro_rows(remote, spec, rows, source)
-        _log(f"local macro upload candidate rows={total}")
+        _log(f"local macro upload to {_remote_label()} candidate rows={total}")
         return total
+
+
+upload_local_prices_to_turso = upload_local_prices_to_remote
+upload_local_fundamentals_to_turso = upload_local_fundamentals_to_remote
+upload_local_news_to_turso = upload_local_news_to_remote
+upload_local_macro_to_turso = upload_local_macro_to_remote
+
+
+def refresh_local_databases(args: argparse.Namespace) -> None:
+    local_sp500_db = Path(args.local_sp500_db)
+    local_macro_db = Path(args.local_macro_db)
+
+    _log(f"STAGE 1/2 local SQLite incremental refresh started: target={args.target}")
+    if args.target in {"all", "sp500", "prices"}:
+        _log(f"STAGE 1/2 local S&P500 price refresh -> {local_sp500_db}")
+        refresh_sp500_shared_prices(
+            data_dir=DEFAULT_DATA_DIR,
+            shared_db_root=local_sp500_db.parent if local_sp500_db.name else DEFAULT_SHARED_DB_ROOT,
+            symbols_csv=Path(args.symbols_csv),
+            start_date=str(args.start_date),
+            chunk_size=int(args.chunk_size),
+            provider=str(args.provider),
+            pause_seconds=float(args.pause_seconds),
+        )
+
+    if args.target in {"all", "sp500", "fundamentals"}:
+        _log(f"STAGE 1/2 local fundamentals refresh -> {local_sp500_db}")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pipeline_common.refresh_shared_quarterly_fundamentals",
+                "--db-path",
+                str(local_sp500_db),
+                "--limit-per-symbol",
+                str(int(args.fundamental_limit_per_symbol)),
+                "--pause-seconds",
+                str(float(args.pause_seconds)),
+            ],
+            cwd=str(ROOT),
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"local fundamentals refresh failed with exit code {result.returncode}")
+
+    if args.target in {"all", "sp500", "news"}:
+        _log(f"STAGE 1/2 local news refresh -> {local_sp500_db}")
+        sync_sp500_news_articles(
+            backfill_days=int(args.news_backfill_days),
+            overlap_days=int(args.overlap_days),
+            max_items=int(args.news_max_items),
+            timeout=int(args.news_timeout),
+            components_csv=Path(args.symbols_csv),
+            db_path=local_sp500_db,
+        )
+
+    if args.target in {"all", "macro"}:
+        _log(f"STAGE 1/2 local macro refresh -> {local_macro_db}")
+        refresh_macro_prices(
+            db_path=local_macro_db,
+            years=int(args.macro_years),
+            require_fred=False,
+        )
+    _log(f"STAGE 1/2 local SQLite incremental refresh finished: target={args.target}")
 
 
 def _record_run(status: str, mode: str, counts: JobCounts, message: str) -> None:
@@ -1295,8 +1429,8 @@ def _record_run(status: str, mode: str, counts: JobCounts, message: str) -> None
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Incrementally refresh Turso calculation DBs.")
-    parser.add_argument("--mode", choices=["direct", "upload-local"], default="direct")
+    parser = argparse.ArgumentParser(description="Incrementally refresh remote calculation DBs.")
+    parser.add_argument("--mode", choices=["direct", "upload-local", "local-then-upload"], default="direct")
     parser.add_argument("--target", choices=["all", "sp500", "prices", "fundamentals", "news", "macro"], default="all")
     parser.add_argument("--symbols-csv", default=str(DEFAULT_COMPONENTS_CSV))
     parser.add_argument("--start-date", default=DEFAULT_START_DATE)
@@ -1361,20 +1495,24 @@ def main(argv: list[str] | None = None) -> int:
                     rewrite_series=_parse_series_ids(str(args.macro_rewrite_series)),
                 )
         else:
+            if args.mode == "local-then-upload":
+                refresh_local_databases(args)
+            _log(f"STAGE 2/2 {_remote_label()} incremental upload started: target={args.target}")
             if args.target in {"all", "sp500", "prices"}:
-                price_rows = upload_local_prices_to_turso(
+                price_rows = upload_local_prices_to_remote(
                     local_db=Path(args.local_sp500_db),
                     overlap_days=int(args.overlap_days),
                 )
             if args.target in {"all", "sp500", "fundamentals"}:
-                fundamental_rows = upload_local_fundamentals_to_turso(local_db=Path(args.local_sp500_db))
+                fundamental_rows = upload_local_fundamentals_to_remote(local_db=Path(args.local_sp500_db))
             if args.target in {"all", "sp500", "news"}:
-                news_rows = upload_local_news_to_turso(
+                news_rows = upload_local_news_to_remote(
                     local_db=Path(args.local_sp500_db),
                     overlap_days=int(args.overlap_days),
                 )
             if args.target in {"all", "macro"}:
-                macro_rows = upload_local_macro_to_turso(local_db=Path(args.local_macro_db))
+                macro_rows = upload_local_macro_to_remote(local_db=Path(args.local_macro_db))
+            _log(f"STAGE 2/2 {_remote_label()} incremental upload finished: target={args.target}")
         counts = JobCounts(
             price_rows=price_rows,
             fundamental_rows=fundamental_rows,

@@ -7,7 +7,7 @@ from refresh_turso_daily import main as refresh_main
 
 DEFAULT_ARGS = [
     "--mode",
-    "direct",
+    "upload-local",
     "--target",
     "all",
     "--overlap-days",
