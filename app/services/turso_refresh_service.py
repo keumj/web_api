@@ -13,8 +13,8 @@ from app.services import refresh_state
 from app.settings import settings
 
 
-STATE_RELATIVE_PATH = Path("outputs") / "turso_refresh_button_state.json"
-LOG_RELATIVE_PATH = Path("outputs") / "turso_refresh_button.log"
+STATE_RELATIVE_PATH = Path("outputs") / "supabase_refresh_button_state.json"
+LOG_RELATIVE_PATH = Path("outputs") / "supabase_refresh_button.log"
 ALLOWED_TARGETS: dict[str, str] = {
     "prices": "가격/시총",
     "fundamentals": "펀더멘털",
@@ -66,7 +66,7 @@ def _display_path(path: Path) -> str:
 
 
 def _build_command(target: str) -> list[str]:
-    script = settings.project_root / "scripts" / "refresh_turso_daily.py"
+    script = settings.project_root / "scripts" / "refresh_supabase_daily.py"
     return [sys.executable, "-u", str(script), "--mode", "direct", "--target", target]
 
 
@@ -74,7 +74,7 @@ def _record_refresh_state(event: str, *, target: str, exit_code: int | None = No
     old_sync_interval = os.environ.get("KEUMJ_TURSO_REPLICA_SYNC_SECONDS")
     os.environ["KEUMJ_TURSO_REPLICA_SYNC_SECONDS"] = "1"
     try:
-        refresh_state.record_state(event, source=f"manual-turso:{target}", exit_code=exit_code, root=root)
+        refresh_state.record_state(event, source=f"manual-supabase:{target}", exit_code=exit_code, root=root)
     finally:
         if old_sync_interval is None:
             os.environ.pop("KEUMJ_TURSO_REPLICA_SYNC_SECONDS", None)
@@ -105,9 +105,9 @@ def start(target: str) -> dict[str, Any]:
     with _LOCK:
         global _RUNNING_THREAD
         if _RUNNING_THREAD and _RUNNING_THREAD.is_alive():
-            return {"ok": False, "message": "turso refresh is already running"}
+            return {"ok": False, "message": "supabase refresh is already running"}
 
-        thread = threading.Thread(target=_run, args=(clean_target,), name=f"turso-refresh-{clean_target}", daemon=True)
+        thread = threading.Thread(target=_run, args=(clean_target,), name=f"supabase-refresh-{clean_target}", daemon=True)
         _RUNNING_THREAD = thread
         thread.start()
 
