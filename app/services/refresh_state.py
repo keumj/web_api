@@ -371,6 +371,25 @@ def notice_state(root: Path | None = None) -> dict[str, Any]:
         severity = "success"
         headline = "현재 추적 중인 SQLite 변경은 없습니다."
 
+    if not exists or state.get("state_read_error"):
+        headline = "갱신 상태 기록이 아직 없습니다."
+    elif stale_running:
+        headline = "갱신 작업이 종료 기록 없이 오래 실행 중으로 남아 있습니다."
+    elif status == "failed":
+        headline = "마지막 원격 데이터 갱신이 실패했습니다."
+    elif git.get("error"):
+        headline = "로컬 파일 변경 상태 확인이 필요합니다."
+    elif status == "running":
+        headline = "원격 데이터 갱신 작업이 실행 중입니다."
+    elif refresh_completed and git.get("changed"):
+        headline = "원격 데이터 갱신은 성공했고, 로컬 파일 변경이 남아 있습니다."
+    elif refresh_completed:
+        headline = "원격 데이터 갱신이 정상 완료됐습니다."
+    elif git.get("changed"):
+        headline = "아직 반영되지 않은 로컬 파일 변경이 있습니다."
+    else:
+        headline = "현재 추적 중인 로컬 파일 변경은 없습니다."
+
     state["notice"] = {
         "severity": severity,
         "headline": headline,

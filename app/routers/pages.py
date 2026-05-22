@@ -49,8 +49,6 @@ def _refresh_notice_card(*, visible: bool) -> str:
     quarterly = data.get("quarterly") if isinstance(data.get("quarterly"), dict) else {}
     news = data.get("news") if isinstance(data.get("news"), dict) else {}
     macro = data.get("macro") if isinstance(data.get("macro"), dict) else {}
-    sp500_replica = data.get("sp500_replica") if isinstance(data.get("sp500_replica"), dict) else {}
-    macro_replica = data.get("macro_replica") if isinstance(data.get("macro_replica"), dict) else {}
     sp500_run = data.get("sp500_refresh_run") if isinstance(data.get("sp500_refresh_run"), dict) else {}
     macro_run = data.get("macro_refresh_run") if isinstance(data.get("macro_refresh_run"), dict) else {}
     data_html = "".join(
@@ -63,15 +61,9 @@ def _refresh_notice_card(*, visible: bool) -> str:
         )
     )
     data_html = (
-        f"<li>S&amp;P500 source: {html.escape(str(data.get('sp500_source') or '-'))}</li>"
-        + f"<li>S&amp;P500 replica: enabled={html.escape(str(data.get('using_sp500_replica') or False))} "
-        f"path={html.escape(str(sp500_replica.get('path') or '-'))} "
-        f"modified={html.escape(str(sp500_replica.get('modified_at') or '-'))}</li>"
+        f"<li>S&amp;P500 remote source: {html.escape(str(data.get('sp500_source') or '-'))}</li>"
+        + f"<li>Macro remote source: {html.escape(str(data.get('macro_source') or '-'))}</li>"
         + data_html
-        + f"<li>Macro source: {html.escape(str(data.get('macro_source') or '-'))}</li>"
-        + f"<li>Macro replica: enabled={html.escape(str(data.get('using_macro_replica') or False))} "
-        f"path={html.escape(str(macro_replica.get('path') or '-'))} "
-        f"modified={html.escape(str(macro_replica.get('modified_at') or '-'))}</li>"
     )
     if sp500_run:
         data_html += (
@@ -124,19 +116,19 @@ def _refresh_notice_card(*, visible: bool) -> str:
       <div class="service-card" style="background:{tone}; border-color:{border};">
         <h3 style="margin:0 0 6px;">데이터 갱신 알림</h3>
         <p class="service-muted" style="margin:0 0 10px;">
-          로컬 갱신 작업의 시작/종료 상태, SQLite 변경 여부, 최신 데이터 날짜를 구조화된 상태 파일 기준으로 확인합니다.
+          Supabase 원격 데이터 갱신 상태와 최신 데이터 날짜를 확인합니다.
         </p>
         <div style="display:grid; gap:8px; font-size:13px;">
           <div><strong>{html.escape(headline)}</strong></div>
           <div class="service-muted">{html.escape(run_meta)}</div>
           {error_html}
           <div>
-            <div class="service-muted">예비 Turso 직접 갱신</div>
+            <div class="service-muted">Supabase 직접 갱신</div>
             <div class="service-actions" style="margin-top:6px;">{turso_buttons}</div>
             <div class="service-muted" style="margin-top:6px;">{html.escape(turso_meta)}</div>
           </div>
           <div>
-            <div class="service-muted">SQLite Git 상태</div>
+            <div class="service-muted">로컬 파일 변경 상태</div>
             <ul style="margin:4px 0 0 18px; padding:0;">{git_html}</ul>
           </div>
           <div>
