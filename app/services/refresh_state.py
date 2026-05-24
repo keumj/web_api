@@ -297,7 +297,10 @@ def record_state(event: str, *, source: str = "unknown", exit_code: int | None =
         state["status"] = str(event or "checked")
 
     state["git"] = collect_git_status(root_dir)
-    state["data"] = collect_data_status(root_dir)
+    if event == "started" and isinstance(state.get("data"), dict):
+        state["data"] = state["data"]
+    else:
+        state["data"] = collect_data_status(root_dir)
     state["scheduler_log_tail"] = _latest_scheduler_lines(root_dir)
     _write_json(path, state)
     return state
@@ -342,7 +345,8 @@ def notice_state(root: Path | None = None) -> dict[str, Any]:
     state["state_file_exists"] = exists
     state["state_file_path"] = str(STATE_RELATIVE_PATH).replace("\\", "/")
     state["git"] = collect_git_status(root_dir)
-    state["data"] = collect_data_status(root_dir)
+    if not isinstance(state.get("data"), dict):
+        state["data"] = {}
     state["scheduler_log_tail"] = _latest_scheduler_lines(root_dir)
 
     status = str(state.get("status") or "unknown")
