@@ -75,6 +75,19 @@ def _refresh_notice_card(*, visible: bool) -> str:
             f"<li>Macro refresh run: status={html.escape(str(macro_run.get('status') or '-'))} "
             f"finished={html.escape(str(macro_run.get('finished_at') or '-'))}</li>"
         )
+    has_data_cache = any(
+        str(value or "").strip()
+        for value in (
+            prices.get("latest_date"),
+            quarterly.get("latest_fiscal_date"),
+            news.get("latest_publish_date"),
+            macro.get("latest_date"),
+            data.get("sp500_source"),
+            data.get("macro_source"),
+        )
+    )
+    if not has_data_cache:
+        data_html = "<li>No refresh status cache yet. It will appear after the automatic update finishes.</li>"
     exit_code = state.get("last_exit_code") if state.get("last_exit_code") is not None else "-"
     run_meta = (
         f"상태={state.get('status') or 'unknown'} / "

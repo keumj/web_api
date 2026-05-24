@@ -51,6 +51,10 @@ Data store policy:
 - Keep storage responsibilities separate: local SQLite for local truth and
   recovery, Supabase for shared data serving, Turso for lightweight personal
   state.
+- Do not add local SQLite fallback reads for normal Render/runtime paths that
+  should use Supabase shared reference data or Turso user data. Local DB
+  fallback is only for emergency recovery when Supabase shared price/news/
+  fundamental/macro data or Turso user data cannot be used.
 
 Do not use this guidance to justify unrelated refactors. Keep edits scoped to
 the demonstrated failure pattern and its obvious siblings.
