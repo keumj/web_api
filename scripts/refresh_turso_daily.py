@@ -987,12 +987,12 @@ def _prune_supabase_news_articles(conn, retention_days: int, *, as_of_date: obje
     cutoff = _news_retention_cutoff(retention_days, as_of_date=as_of_date)
     if not cutoff:
         return 0
-    row = conn.execute("SELECT COUNT(*) FROM news_articles WHERE publish_date < ?::date", (cutoff,)).fetchone()
+    row = conn.execute("SELECT COUNT(*) FROM news_articles WHERE publish_date::date < ?::date", (cutoff,)).fetchone()
     old_rows = int(row[0] or 0) if row else 0
     if old_rows <= 0:
         _log(f"Supabase news retention kept all rows cutoff={cutoff} retention_days={int(retention_days)}")
         return 0
-    conn.execute("DELETE FROM news_articles WHERE publish_date < ?::date", (cutoff,))
+    conn.execute("DELETE FROM news_articles WHERE publish_date::date < ?::date", (cutoff,))
     conn.commit()
     _log(f"Supabase news retention pruned rows={old_rows} cutoff={cutoff} retention_days={int(retention_days)}")
     return old_rows
