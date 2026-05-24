@@ -973,6 +973,31 @@ def refresh_fundamentals_snapshot_direct(*, symbols_csv: Path, limit_per_symbol:
     return attempted
 
 
+def _news_retention_cutoff(retention_days: int, *, as_of_date: object | None = None) -> str | None:
+    days = int(retention_days)
+    if days <= 0:
+        return None
+    as_of = pd.Timestamp(as_of_date).normalize() if as_of_date is not None else pd.Timestamp.today().normalize()
+    return (as_of - pd.Timedelta(days=max(days - 1, 0))).strftime("%Y-%m-%d")
+
+
+def _prune_supabase_news_articles(conn, retention_days: int, *, as_of_date: object | None = None) -> int:
+    if not (using_supabase_shared_prices_db() or _is_postgres_conn(conn)):
+        return 0
+    cutoff = _news_retention_cutoff(retention_days, as_of_date=as_of_date)
+    if not cutoff:
+        return 0
+    row = conn.execute("SELECT COUNT(*) FROM news_articles WHERE publish_date < ?::date", (cutoff,)).fetchone()
+    old_rows = int(row[0] or 0) if row else 0
+    if old_rows <= 0:
+        _log(f"Supabase news retention kept all rows cutoff={cutoff} retention_days={int(retention_days)}")
+        return 0
+    conn.execute("DELETE FROM news_articles WHERE publish_date < ?::date", (cutoff,))
+    conn.commit()
+    _log(f"Supabase news retention pruned rows={old_rows} cutoff={cutoff} retention_days={int(retention_days)}")
+    return old_rows
+
+
 def refresh_news_direct(
     *,
     symbols_csv: Path,
@@ -980,6 +1005,7 @@ def refresh_news_direct(
     overlap_days: int,
     max_items: int,
     timeout: int,
+    retention_days: int,
 ) -> int:
     if not using_remote_shared_prices_db():
         raise RuntimeError("KEUMJ_SP500_DATABASE_URL or KEUMJ_SP500_SUPABASE_* must be set for direct news refresh.")
@@ -1038,6 +1064,7 @@ def refresh_news_direct(
             )
             if idx % 25 == 0:
                 _log(f"news progress {idx}/{len(symbols)} total_candidate_rows={total}")
+        _prune_supabase_news_articles(conn, retention_days, as_of_date=run_date)
     _log(f"news direct refresh candidate rows={total}")
     return total
 
@@ -1265,7 +1292,7 @@ def upload_local_fundamentals_to_remote(*, local_db: Path) -> int:
     return total
 
 
-def upload_local_news_to_remote(*, local_db: Path, overlap_days: int) -> int:
+def upload_local_news_to_remote(*, local_db: Path, overlap_days: int, retention_days: int) -> int:
     if not using_remote_shared_prices_db():
         raise RuntimeError("KEUMJ_SP500_DATABASE_URL or KEUMJ_SP500_SUPABASE_* must be set for local news upload.")
     if not local_db.is_file():
@@ -1279,8 +1306,13 @@ def upload_local_news_to_remote(*, local_db: Path, overlap_days: int) -> int:
             SELECT ticker, publish_date, title, link, source, sentiment_score, analysis_status
             FROM news_articles
         """
+        params: list[object] = []
+        cutoff = _news_retention_cutoff(retention_days) if using_supabase_shared_prices_db() else None
+        if cutoff:
+            query += " WHERE date(publish_date) >= ?"
+            params.append(cutoff)
         query += " ORDER BY publish_date, ticker, id"
-        rows = [tuple(row) for row in local.execute(query).fetchall()]
+        rows = [tuple(row) for row in local.execute(query, params).fetchall()]
         attempted = _executemany_chunks(
             remote,
             """
@@ -1297,6 +1329,7 @@ def upload_local_news_to_remote(*, local_db: Path, overlap_days: int) -> int:
             f"local news upload to {_remote_label()} local_candidate_rows={attempted} "
             "mode=all-local-dedup-by-ticker-publish-date-link"
         )
+        _prune_supabase_news_articles(remote, retention_days)
         return attempted
 
 
@@ -1442,6 +1475,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--news-backfill-days", type=int, default=DEFAULT_BACKFILL_DAYS)
     parser.add_argument("--news-max-items", type=int, default=DEFAULT_MAX_ITEMS)
     parser.add_argument("--news-timeout", type=int, default=8)
+    parser.add_argument(
+        "--news-retention-days",
+        type=int,
+        default=60,
+        help="Keep only this many calendar days of news_articles in Supabase. Use 0 to disable pruning.",
+    )
     parser.add_argument("--macro-years", type=int, default=5)
     parser.add_argument(
         "--macro-rewrite-series",
@@ -1488,6 +1527,7 @@ def main(argv: list[str] | None = None) -> int:
                     overlap_days=int(args.overlap_days),
                     max_items=int(args.news_max_items),
                     timeout=int(args.news_timeout),
+                    retention_days=int(args.news_retention_days),
                 )
             if args.target in {"all", "macro"}:
                 macro_rows = refresh_macro_direct(
@@ -1509,6 +1549,7 @@ def main(argv: list[str] | None = None) -> int:
                 news_rows = upload_local_news_to_remote(
                     local_db=Path(args.local_sp500_db),
                     overlap_days=int(args.overlap_days),
+                    retention_days=int(args.news_retention_days),
                 )
             if args.target in {"all", "macro"}:
                 macro_rows = upload_local_macro_to_remote(local_db=Path(args.local_macro_db))

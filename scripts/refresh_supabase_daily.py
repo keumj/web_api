@@ -7,7 +7,7 @@ from refresh_turso_daily import main as refresh_main
 
 DEFAULT_ARGS = [
     "--mode",
-    "upload-local",
+    "direct",
     "--target",
     "all",
     "--overlap-days",
@@ -18,6 +18,8 @@ DEFAULT_ARGS = [
     "8",
     "--news-timeout",
     "5",
+    "--news-retention-days",
+    "60",
 ]
 
 

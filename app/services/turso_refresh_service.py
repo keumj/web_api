@@ -67,7 +67,7 @@ def _display_path(path: Path) -> str:
 
 def _build_command(target: str) -> list[str]:
     script = settings.project_root / "scripts" / "refresh_supabase_daily.py"
-    return [sys.executable, "-u", str(script), "--mode", "upload-local", "--target", target]
+    return [sys.executable, "-u", str(script), "--mode", "direct", "--target", target]
 
 
 def _record_refresh_state(event: str, *, target: str, exit_code: int | None = None, root: Path) -> None:
