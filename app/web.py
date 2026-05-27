@@ -41,11 +41,11 @@ def _service_chrome_css() -> str:
     }
     .service-top { position: sticky; top: 0; z-index: 2000; background: rgba(255,255,255,.96); border-bottom: 1px solid var(--service-line); font-family: "Segoe UI", "Noto Sans KR", sans-serif; }
     .service-top-inner { width: 100%; max-width: 1460px; margin: 0 auto; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .service-brand { font-weight: 750; letter-spacing: 0; white-space: nowrap; color: var(--service-brand); }
+    .service-brand { font-weight: 750; letter-spacing: 0; white-space: nowrap; color: #000; }
     .service-brand a { color: inherit; text-decoration: none; }
     .service-nav { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-    .service-nav a { color: var(--service-brand); border: 1px solid var(--service-line); background: #fff; text-decoration: none; border-radius: 8px; padding: 7px 11px; font-size: 13px; line-height: 1.3; }
-    .service-nav a.active { background: var(--service-brand); color: #fff; border-color: var(--service-brand); }
+    .service-top .service-nav a { color: #000; border: 1px solid var(--service-line); background: #fff; text-decoration: none; border-radius: 8px; padding: 7px 11px; font-size: 13px; line-height: 1.3; }
+    .service-top .service-nav a.active { background: #000; color: #fff; border-color: #000; }
     @media (max-width: 900px) {
       .service-top-inner { align-items: flex-start; flex-direction: column; }
       .service-nav { justify-content: flex-start; }
@@ -327,11 +327,11 @@ def shell(
     body {{ margin: 0; color: var(--text); background: var(--bg); font-family: "Segoe UI", "Noto Sans KR", sans-serif; }}
     .service-top {{ position: sticky; top: 0; z-index: 20; background: rgba(255,255,255,.96); border-bottom: 1px solid var(--line); }}
     .service-top-inner {{ width: 100%; max-width: 1460px; margin: 0 auto; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }}
-    .service-brand {{ font-weight: 750; letter-spacing: 0; white-space: nowrap; }}
+    .service-brand {{ font-weight: 750; letter-spacing: 0; white-space: nowrap; color: #000; }}
     .service-brand a {{ color: inherit; text-decoration: none; }}
     .service-nav {{ display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }}
-    .service-nav a {{ color: var(--brand); border: 1px solid var(--line); background: #fff; text-decoration: none; border-radius: 8px; padding: 7px 11px; font-size: 13px; }}
-    .service-nav a.active {{ background: var(--brand); color: #fff; border-color: var(--brand); }}
+    .service-top .service-nav a {{ color: #000; border: 1px solid var(--line); background: #fff; text-decoration: none; border-radius: 8px; padding: 7px 11px; font-size: 13px; }}
+    .service-top .service-nav a.active {{ background: #000; color: #fff; border-color: #000; }}
     .service-main {{ width: 100%; max-width: 1460px; margin: 0 auto; padding: 16px 20px 30px; }}
     .service-card {{ max-width: 100%; min-width: 0; overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }}
     .service-grid {{ display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 12px; }}
