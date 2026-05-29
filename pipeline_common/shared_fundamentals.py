@@ -39,6 +39,38 @@ def _last_value_on_or_before(series: pd.Series, as_of_ts: pd.Timestamp) -> tuple
     return pd.Timestamp(clean.index[-1]).normalize(), float(clean.iloc[-1])
 
 
+def _recent_quarter_values(rows: pd.DataFrame, column: str, *, count: int, source_is_sec: bool) -> list[float]:
+    if rows.empty or column not in rows.columns:
+        return []
+
+    ordered = rows[["fiscal_date", column]].copy()
+    ordered["fiscal_date"] = pd.to_datetime(ordered["fiscal_date"], errors="coerce")
+    ordered[column] = pd.to_numeric(ordered[column], errors="coerce")
+    ordered = ordered.dropna(subset=["fiscal_date", column]).sort_values("fiscal_date")
+    if ordered.empty:
+        return []
+
+    if not source_is_sec:
+        return [float(value) for value in ordered[column].tail(max(int(count), 1)).tolist()][::-1]
+
+    quarter_values: list[tuple[pd.Timestamp, float]] = []
+    previous_value: float | None = None
+    previous_date: pd.Timestamp | None = None
+    for item in ordered.itertuples(index=False):
+        fiscal_date = pd.Timestamp(item.fiscal_date)
+        current = float(getattr(item, column))
+        if previous_value is None or previous_date is None:
+            quarter_value = current
+        else:
+            gap_days = abs((fiscal_date - previous_date).days)
+            quarter_value = current - previous_value if current >= previous_value and gap_days <= 130 else current
+        quarter_values.append((fiscal_date, quarter_value))
+        previous_value = current
+        previous_date = fiscal_date
+
+    return [float(value) for _, value in quarter_values[-max(int(count), 1):]][::-1]
+
+
 def derive_shared_fundamental_metrics(
     symbols: list[str],
     *,
@@ -59,9 +91,10 @@ def derive_shared_fundamental_metrics(
         return pd.DataFrame(), "not_available"
 
     target = Path(db_path) if db_path is not None else shared_prices_sqlite_path(shared_db_root)
+    load_limit = max(int(limit_per_symbol) * 2, 8)
     quarterly, quarterly_source = load_shared_quarterly_fundamentals_for_symbols(
         normalized,
-        limit_per_symbol=max(int(limit_per_symbol), 4),
+        limit_per_symbol=load_limit,
         shared_db_root=shared_db_root,
         db_path=target,
     )
@@ -97,11 +130,18 @@ def derive_shared_fundamental_metrics(
         if ordered.empty:
             continue
 
-        ttm_rows = ordered.head(max(int(limit_per_symbol), 4)).copy()
+        source_is_sec = (
+            "source" in ordered.columns
+            and ordered["source"].astype(str).str.lower().str.startswith("sec:").any()
+        )
+        ttm_count = max(int(limit_per_symbol), 4)
+        ttm_rows = ordered.head(ttm_count).copy()
         latest = ordered.iloc[0]
 
-        ttm_net_income = pd.to_numeric(ttm_rows["net_income"], errors="coerce").dropna().sum(min_count=1)
-        ttm_eps = pd.to_numeric(ttm_rows["diluted_eps"], errors="coerce").dropna().sum(min_count=1)
+        net_income_values = _recent_quarter_values(ordered, "net_income", count=ttm_count, source_is_sec=source_is_sec)
+        eps_values = _recent_quarter_values(ordered, "diluted_eps", count=ttm_count, source_is_sec=source_is_sec)
+        ttm_net_income = float(sum(net_income_values)) if net_income_values else np.nan
+        ttm_eps = float(sum(eps_values)) if eps_values else np.nan
         equity_values = pd.to_numeric(ttm_rows["stockholders_equity"], errors="coerce").dropna()
         latest_equity = pd.to_numeric(pd.Series([latest.get("stockholders_equity")]), errors="coerce").dropna()
         latest_equity_value = float(latest_equity.iloc[0]) if not latest_equity.empty else np.nan

@@ -3657,6 +3657,46 @@ def _sec_rows_to_df(rows: dict[str, dict[pd.Timestamp, float]]) -> pd.DataFrame:
     return _normalize_statement_df(df)
 
 
+def _quarterize_cumulative_statement_df(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty or len(df.columns) < 2:
+        return df
+
+    out = _normalize_statement_df(df)
+    if out.empty:
+        return df
+
+    ordered_cols = sorted(pd.to_datetime(out.columns, errors="coerce"))
+    ordered_cols = [col for col in ordered_cols if pd.notna(col)]
+    if not ordered_cols:
+        return out
+
+    for row_name in out.index:
+        raw = pd.to_numeric(out.loc[row_name, ordered_cols], errors="coerce")
+        previous: float | None = None
+        previous_date: pd.Timestamp | None = None
+        values: dict[pd.Timestamp, float] = {}
+        for col, value in raw.items():
+            if pd.isna(value):
+                values[col] = np.nan
+                continue
+
+            current = float(value)
+            if previous is None or previous_date is None:
+                quarter_value = current
+            else:
+                gap_days = abs((pd.Timestamp(col) - previous_date).days)
+                quarter_value = current - previous if current >= previous and gap_days <= 130 else current
+
+            values[col] = quarter_value
+            previous = current
+            previous_date = pd.Timestamp(col)
+
+        for col, value in values.items():
+            out.loc[row_name, col] = value
+
+    return _normalize_statement_df(out)
+
+
 def _fetch_sec_statement_frames(
     *,
     ticker: str,
@@ -3700,7 +3740,7 @@ def _fetch_sec_statement_frames(
             continue
         free_cf[d] = float(v) - abs(float(cap))
 
-    income_df = _sec_rows_to_df(
+    income_df = _quarterize_cumulative_statement_df(_sec_rows_to_df(
         {
             "Total Revenue": revenue,
             "Gross Profit": gross_profit,
@@ -3708,7 +3748,7 @@ def _fetch_sec_statement_frames(
             "Net Income": net_income,
             "Diluted EPS": diluted_eps,
         }
-    )
+    ))
     balance_df = _sec_rows_to_df(
         {
             "Cash And Cash Equivalents": cash,
@@ -3720,7 +3760,7 @@ def _fetch_sec_statement_frames(
             "Total Debt": debt,
         }
     )
-    cashflow_df = _sec_rows_to_df(
+    cashflow_df = _quarterize_cumulative_statement_df(_sec_rows_to_df(
         {
             "Operating Cash Flow": ocf,
             "Investing Cash Flow": icf,
@@ -3728,7 +3768,7 @@ def _fetch_sec_statement_frames(
             "Free Cash Flow": free_cf,
             "Capital Expenditure": capex,
         }
-    )
+    ))
 
     company_name = str(facts_payload.get("entityName") or "")
     return income_df, balance_df, cashflow_df, company_name

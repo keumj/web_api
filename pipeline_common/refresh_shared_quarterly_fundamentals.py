@@ -213,7 +213,7 @@ def _extract_quarterly_rows(
             ca_bundle=ca_bundle,
             insecure_ssl=insecure_ssl,
         )
-        source_prefix = "sec" if not (income.empty and balance.empty and cashflow.empty) else "yfinance"
+        source_prefix = "sec_quarterized" if not (income.empty and balance.empty and cashflow.empty) else "yfinance"
     if income.empty and balance.empty and cashflow.empty:
         return []
     all_dates: list[pd.Timestamp] = []
