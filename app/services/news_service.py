@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pipeline_stock_news import web_gui as news_web
 
 from app.web import apply_service_chrome, rewrite_links
+from app.services import user_result_service
+from app.services.auth_service import AuthUser
 
 
 NEWS_REWRITES = {
@@ -66,9 +68,11 @@ def _render_func(page_key: str):
     }[page_key]
 
 
-def render(page: str, *, session_key: str = "global") -> str:
-    page_key = PAGE_ALIASES.get(page, "overview")
-    state = _session_states(session_key)[page_key]
+def _news_user_id(user: AuthUser | None) -> str | None:
+    return user.id if user is not None else None
+
+
+def _render_state(page_key: str, state: NewsPageState) -> str:
     ctx = news_web._PageContext(
         dashboard=state.dashboard,
         form=state.form,
@@ -78,7 +82,17 @@ def render(page: str, *, session_key: str = "global") -> str:
     return apply_service_chrome(html, active="news")
 
 
-def run(page: str, form: dict[str, str], *, session_key: str = "global") -> str:
+def render(page: str, *, session_key: str = "global", user: AuthUser | None = None) -> str:
+    page_key = PAGE_ALIASES.get(page, "overview")
+    state = _session_states(session_key)[page_key]
+    if state.dashboard is None and state.error is None:
+        latest = user_result_service.load_latest_result(_news_user_id(user), module="stock-news", page=page_key)
+        if latest is not None:
+            return user_result_service.with_loaded_notice(latest.html, latest, label="뉴스 분석")
+    return _render_state(page_key, state)
+
+
+def run(page: str, form: dict[str, str], *, session_key: str = "global", user: AuthUser | None = None) -> str:
     page_key = PAGE_ALIASES.get(page, "overview")
     state = _session_states(session_key)[page_key]
     page_form = news_web._default_form()
@@ -88,6 +102,13 @@ def run(page: str, form: dict[str, str], *, session_key: str = "global") -> str:
     try:
         state.dashboard = news_web._build_dashboard_from_form(page_form, page_key)
         state.error = None
+        user_result_service.save_latest_result(
+            _news_user_id(user),
+            module="stock-news",
+            page=page_key,
+            html=_render_state(page_key, state),
+            metadata={"ticker": page_form.get("ticker", ""), "page": page},
+        )
     except Exception as exc:
         state.dashboard = None
         state.error = f"{type(exc).__name__}: {exc}\n\n{traceback.format_exc(limit=3)}"

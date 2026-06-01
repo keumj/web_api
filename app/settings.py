@@ -59,15 +59,15 @@ class Settings:
     auth_cookie_name: str = os.getenv("KEUMJM_AUTH_COOKIE_NAME", "keumjm_session")
     auth_cookie_secure: bool = _env_bool("KEUMJM_AUTH_COOKIE_SECURE", False)
     auth_session_days: int = _env_int("KEUMJM_AUTH_SESSION_DAYS", 14)
-    auth_session_secret: str = os.getenv("KEUMJM_AUTH_SECRET", "")
+    auth_session_secret: str = _env_first("KEUMJM_AUTH_SECRET", "KEUMJ_AUTH_SECRET")
     auth_db_path: Path = Path(os.getenv("KEUMJM_AUTH_DB_PATH", "data/users/auth.sqlite"))
     auth_secret_path: Path = Path(os.getenv("KEUMJM_AUTH_SECRET_PATH", "data/users/session_secret.key"))
     bootstrap_admin_username: str = os.getenv("KEUMJM_BOOTSTRAP_ADMIN_USERNAME", "").strip()
     bootstrap_admin_password: str = os.getenv("KEUMJM_BOOTSTRAP_ADMIN_PASSWORD", "")
     portfolio_db_root: Path = Path(os.getenv("KEUMJ_PORTFOLIO_DB_DIR", "data/portfolio"))
     use_remote_app_db: bool = _env_bool("KEUMJM_USE_REMOTE_APP_DB", True)
-    app_database_url: str = _env_first("KEUMJM_DATABASE_URL", "TURSO_DATABASE_URL")
-    app_database_auth_token: str = _env_first("KEUMJM_DATABASE_AUTH_TOKEN", "TURSO_AUTH_TOKEN")
+    app_database_url: str = _env_first("KEUMJM_DATABASE_URL", "KEUMJ_DATABASE_URL", "TURSO_DATABASE_URL")
+    app_database_auth_token: str = _env_first("KEUMJM_DATABASE_AUTH_TOKEN", "KEUMJ_DATABASE_AUTH_TOKEN", "TURSO_AUTH_TOKEN")
     sp500_database_url: str = _env_first(
         "KEUMJ_SP500_DATABASE_URL",
         "KEUMJ_SP500_TURSO_DATABASE_URL",

@@ -50,7 +50,7 @@ def _session_secret() -> bytes:
     if settings.auth_session_secret:
         return hashlib.sha256(settings.auth_session_secret.encode("utf-8")).digest()
     if db_service.using_remote_app_db():
-        raise RuntimeError("KEUMJM_AUTH_SECRET must be set when using Turso/remote app DB storage.")
+        raise RuntimeError("KEUMJM_AUTH_SECRET/KEUMJ_AUTH_SECRET must be set when using Turso/remote app DB storage.")
     path = _secret_path()
     if path.exists():
         return path.read_bytes()

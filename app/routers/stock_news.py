@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.form import read_form
-from app.services import client_session, news_service
+from app.services import auth_service, client_session, news_service
 
 router = APIRouter(prefix="/stock-news")
 
@@ -12,7 +12,9 @@ router = APIRouter(prefix="/stock-news")
 @router.get("/{page}", response_class=HTMLResponse)
 def news_page(request: Request, page: str) -> HTMLResponse:
     session = client_session.resolve(request)
-    response = HTMLResponse(news_service.render(page, session_key=session.state_key))
+    response = HTMLResponse(
+        news_service.render(page, session_key=session.state_key, user=auth_service.current_user(request))
+    )
     client_session.attach_cookie(response, session)
     return response
 
@@ -30,7 +32,7 @@ async def run_news(page: str, request: Request) -> RedirectResponse:
         "volatility-regime": "volatility-regime",
         "topic-modeling": "topic-modeling",
     }.get(page, "overview")
-    news_service.run(route_page, form, session_key=session.state_key)
+    news_service.run(route_page, form, session_key=session.state_key, user=auth_service.current_user(request))
     response = RedirectResponse(f"/stock-news/{route_page}", status_code=303)
     client_session.attach_cookie(response, session)
     return response

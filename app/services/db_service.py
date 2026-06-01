@@ -27,7 +27,7 @@ def _connect_remote():
         import libsql
     except ImportError as exc:  # pragma: no cover - depends on deployment extras.
         raise RuntimeError(
-            "TURSO_DATABASE_URL/KEUMJM_DATABASE_URL is set, but the 'libsql' package is not installed."
+            "TURSO_DATABASE_URL/KEUMJM_DATABASE_URL/KEUMJ_DATABASE_URL is set, but the 'libsql' package is not installed."
         ) from exc
     kwargs: dict[str, str] = {"database": settings.app_database_url}
     if settings.app_database_auth_token:

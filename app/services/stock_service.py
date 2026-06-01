@@ -9,6 +9,8 @@ from datetime import datetime
 from pipeline_stock import web_gui as stock_web
 
 from app.web import apply_service_chrome, rewrite_links
+from app.services import user_result_service
+from app.services.auth_service import AuthUser
 
 
 STOCK_REWRITES = {
@@ -124,12 +126,38 @@ def _clean_stock_html(html: str) -> str:
     return apply_service_chrome(rewrite_links(html, STOCK_REWRITES), active="stock")
 
 
-def render(page: str, ticker: str | None = None, intent: str | None = None, *, session_key: str = "global") -> str:
-    state = _state(session_key)
-    selected_ticker = _clean_ticker(ticker or "")
-    if selected_ticker:
-        _sync_ticker(state, selected_ticker)
+def _stock_user_id(user: AuthUser | None) -> str | None:
+    return user.id if user is not None else None
 
+
+def _page_has_result(state: StockState, page: str) -> bool:
+    return {
+        "forecast": state.forecast_ctx is not None,
+        "financials": state.financials_ctx is not None,
+        "technical": state.technical_ctx is not None,
+        "returns": state.returns_ctx is not None,
+        "risk": state.risk_ctx is not None,
+        "factor-regime": state.factor_ctx is not None,
+        "decision": state.decision_ctx is not None,
+        "walk-forward": state.wfv_ctx is not None,
+    }.get(page, state.forecast_ctx is not None)
+
+
+def _page_ticker(state: StockState, page: str) -> str:
+    form = {
+        "forecast": state.forecast_form,
+        "financials": state.financials_form,
+        "technical": state.technical_form,
+        "returns": state.returns_form,
+        "risk": state.risk_form,
+        "factor-regime": state.factor_form,
+        "decision": state.decision_form,
+        "walk-forward": state.wfv_form,
+    }.get(page, state.forecast_form)
+    return str(form.get("ticker", "") or "")
+
+
+def _render_page_html(page: str, state: StockState) -> str:
     if page == "forecast":
         html = stock_web._html_page(
             state.forecast_form,
@@ -193,7 +221,42 @@ def render(page: str, ticker: str | None = None, intent: str | None = None, *, s
             error=state.forecast_error,
             enable_technical_page=True,
         )
-    return _clean_stock_html(html)
+    return html
+
+
+def _render_clean_page(page: str, state: StockState) -> str:
+    return _clean_stock_html(_render_page_html(page, state))
+
+
+def _save_latest_page(user_id: str | None, page: str, state: StockState) -> None:
+    if not user_id or not _page_has_result(state, page):
+        return
+    user_result_service.save_latest_result(
+        user_id,
+        module="stock",
+        page=page,
+        html=_render_clean_page(page, state),
+        metadata={"ticker": _page_ticker(state, page)},
+    )
+
+
+def render(
+    page: str,
+    ticker: str | None = None,
+    intent: str | None = None,
+    *,
+    session_key: str = "global",
+    user: AuthUser | None = None,
+) -> str:
+    state = _state(session_key)
+    selected_ticker = _clean_ticker(ticker or "")
+    if selected_ticker:
+        _sync_ticker(state, selected_ticker)
+    if not selected_ticker and not _page_has_result(state, page):
+        latest = user_result_service.load_latest_result(_stock_user_id(user), module="stock", page=page)
+        if latest is not None:
+            return user_result_service.with_loaded_notice(latest.html, latest, label="주식 분석")
+    return _render_clean_page(page, state)
 
 
 def _clean_ticker(value: str) -> str:
@@ -226,8 +289,9 @@ def _matching_financials_ctx(state: StockState, ticker: str) -> object | None:
     return fin_ctx if fin_ticker == ticker else None
 
 
-def start_returns(form: dict[str, str], *, session_key: str = "global") -> str:
+def start_returns(form: dict[str, str], *, session_key: str = "global", user: AuthUser | None = None) -> str:
     state = _state(session_key)
+    user_id = _stock_user_id(user)
     ticker = _clean_ticker(form.get("ticker", ""))
     if not ticker:
         with _states_lock:
@@ -257,14 +321,16 @@ def start_returns(form: dict[str, str], *, session_key: str = "global") -> str:
             state.returns_ctx = ctx
             state.returns_error = None
             state.returns_running = False
+        _save_latest_page(user_id, "returns", state)
 
     thread = threading.Thread(target=worker, args=({"ticker": ticker},), name=f"stock-returns-{session_key}", daemon=True)
     thread.start()
     return "returns"
 
 
-def run(action: str, form: dict[str, str], *, session_key: str = "global") -> str:
+def run(action: str, form: dict[str, str], *, session_key: str = "global", user: AuthUser | None = None) -> str:
     state = _state(session_key)
+    user_id = _stock_user_id(user)
     try:
         ticker = _clean_ticker(form.get("ticker", ""))
         _sync_ticker(state, ticker)
@@ -280,11 +346,13 @@ def run(action: str, form: dict[str, str], *, session_key: str = "global") -> st
                 retry_form = {**state.forecast_form, "start_date": "", "end_date": ""}
                 state.forecast_ctx = stock_web._run_once(retry_form)
             state.forecast_error = None
+            _save_latest_page(user_id, "forecast", state)
             return "forecast"
         if action == "financials":
             state.financials_form = {**state.financials_form, **form, "ticker": ticker}
             state.financials_ctx = stock_web._run_financial_once(state.financials_form)
             state.financials_error = None
+            _save_latest_page(user_id, "financials", state)
             return "financials"
         if action == "technical":
             form["action"] = stock_web._normalize_technical_action(form.get("action", "all"))
@@ -295,21 +363,25 @@ def run(action: str, form: dict[str, str], *, session_key: str = "global") -> st
                 cache=state.technical_cache,
             )
             state.technical_error = None
+            _save_latest_page(user_id, "technical", state)
             return "technical"
         if action == "returns":
             state.returns_form = {"ticker": ticker}
             state.returns_ctx = stock_web._run_returns_once(state.returns_form)
             state.returns_error = None
+            _save_latest_page(user_id, "returns", state)
             return "returns"
         if action == "risk":
             state.risk_form = {"ticker": ticker}
             state.risk_ctx = stock_web._run_risk_once(state.risk_form)
             state.risk_error = None
+            _save_latest_page(user_id, "risk", state)
             return "risk"
         if action == "factor":
             state.factor_form = {"ticker": ticker}
             state.factor_ctx = stock_web._run_factor_once(state.factor_form)
             state.factor_error = None
+            _save_latest_page(user_id, "factor-regime", state)
             return "factor-regime"
         if action == "decision":
             state.decision_form = {"ticker": ticker}
@@ -324,6 +396,7 @@ def run(action: str, form: dict[str, str], *, session_key: str = "global") -> st
                 fin_ctx=_matching_financials_ctx(state, ticker),
             )
             state.decision_error = None
+            _save_latest_page(user_id, "decision", state)
             return "decision"
         if action == "walk-forward":
             state.wfv_form = {**state.wfv_form, **form, "ticker": ticker}
@@ -340,6 +413,7 @@ def run(action: str, form: dict[str, str], *, session_key: str = "global") -> st
                 }
                 state.wfv_ctx = stock_web._run_walk_forward_validation_once(retry_form)
             state.wfv_error = None
+            _save_latest_page(user_id, "walk-forward", state)
             return "walk-forward"
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}\n\n{traceback.format_exc(limit=3)}"
