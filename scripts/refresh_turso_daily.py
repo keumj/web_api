@@ -57,6 +57,7 @@ from pipeline_common.refresh_sp500_news import (  # noqa: E402
     DEFAULT_MAX_ITEMS,
     _article_is_in_window,
     _article_query_for_symbol,
+    _effective_news_start_date,
     _publish_date_text,
     sync_sp500_news_articles,
 )
@@ -1015,13 +1016,19 @@ def refresh_news_direct(
     with _connect_shared_prices_read_db() as conn:
         _ensure_remote_prices_schema(conn)
         max_publish = _table_max_value(conn, "news_articles", "publish_date")
-        start_day = run_date - timedelta(days=max(int(backfill_days) - 1, 0))
+        start_day = _effective_news_start_date(
+            conn,
+            as_of_date=run_date,
+            backfill_days=int(backfill_days),
+            overlap_days=int(overlap_days),
+        )
         if start_day > run_date:
             start_day = run_date
         _log(
             f"news direct refresh: symbols={len(symbols)} max_publish={max_publish or '-'} "
-            f"backfill_start_day={start_day} run_date={run_date} max_items={max_items} timeout={timeout} "
-            "mode=fixed-backfill-dedup-by-ticker-link"
+            f"start_day={start_day} run_date={run_date} overlap_days={overlap_days} "
+            f"backfill_days={backfill_days} max_items={max_items} timeout={timeout} "
+            "mode=incremental-overlap-dedup-by-ticker-link"
         )
         for idx, symbol in enumerate(symbols, start=1):
             try:

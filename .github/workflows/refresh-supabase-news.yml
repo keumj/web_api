@@ -45,4 +45,4 @@ jobs:
           KEUMJ_MACRO_SUPABASE_SSLMODE: ${{ secrets.KEUMJ_MACRO_SUPABASE_SSLMODE }}
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           KEUMJ_TURSO_EMBEDDED_REPLICA: "false"
-        run: python scripts/refresh_supabase_daily.py --mode direct --target news
+        run: python scripts/refresh_supabase_daily.py --mode direct --target news --overlap-days 2 --news-backfill-days 32 --news-max-items 30 --news-timeout 8
