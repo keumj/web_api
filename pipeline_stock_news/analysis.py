@@ -315,6 +315,15 @@ def _ticker_sector(ticker: str | None) -> str | None:
     return _sector_map().get(symbol)
 
 
+def _normalize_timestamp(value: object) -> pd.Timestamp | None:
+    if value is None:
+        return None
+    ts = pd.to_datetime(value, errors="coerce")
+    if pd.isna(ts):
+        return None
+    return pd.Timestamp(ts).normalize()
+
+
 def _resolve_window(
     conn: sqlite3.Connection,
     *,
@@ -323,15 +332,21 @@ def _resolve_window(
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
 ) -> tuple[pd.Timestamp, pd.Timestamp]:
     if end_date:
-        end_ts = pd.Timestamp(end_date).normalize()
+        end_ts = _normalize_timestamp(end_date)
+        if end_ts is None:
+            end_ts = pd.Timestamp.today().normalize()
     else:
         row = conn.execute("SELECT MAX(publish_date) FROM news_articles").fetchone()
         if row and row[0]:
-            end_ts = pd.Timestamp(str(row[0])).normalize()
+            end_ts = _normalize_timestamp(row[0])
+            if end_ts is None:
+                end_ts = pd.Timestamp.today().normalize()
         else:
             end_ts = pd.Timestamp.today().normalize()
     if start_date:
-        start_ts = pd.Timestamp(start_date).normalize()
+        start_ts = _normalize_timestamp(start_date)
+        if start_ts is None:
+            start_ts = end_ts - pd.Timedelta(days=max(int(lookback_days) - 1, 0))
     else:
         start_ts = end_ts - pd.Timedelta(days=max(int(lookback_days) - 1, 0))
     return start_ts, end_ts
@@ -341,7 +356,7 @@ def _latest_price_date(conn: sqlite3.Connection) -> pd.Timestamp | None:
     row = conn.execute("SELECT MAX(date) FROM prices").fetchone()
     if not row or not row[0]:
         return None
-    return pd.Timestamp(str(row[0])).normalize()
+    return _normalize_timestamp(row[0])
 
 
 def _max_reference_date_for_forward(conn: sqlite3.Connection, forward_days: int) -> pd.Timestamp | None:
@@ -594,9 +609,11 @@ def _post_event_volatility_ratio(
     baseline_days: int = DEFAULT_VOLATILITY_BASELINE_DAYS,
     post_days: int = DEFAULT_VOLATILITY_POST_DAYS,
 ) -> dict[str, float] | None:
-    if price_frame is None or price_frame.empty or reference_price_date is None or pd.isna(reference_price_date):
+    if price_frame is None or price_frame.empty:
         return None
-    ref = pd.Timestamp(reference_price_date).normalize()
+    ref = _normalize_timestamp(reference_price_date)
+    if ref is None:
+        return None
     if ref not in price_frame.index:
         return None
     position = price_frame.index.get_loc(ref)
@@ -622,9 +639,11 @@ def _post_event_volatility_ratio(
 
 
 def _forward_returns(price_frame: pd.DataFrame | None, reference_price_date: pd.Timestamp | None, horizon_days: int) -> dict[str, object] | None:
-    if price_frame is None or price_frame.empty or reference_price_date is None or pd.isna(reference_price_date):
+    if price_frame is None or price_frame.empty:
         return None
-    ref = pd.Timestamp(reference_price_date).normalize()
+    ref = _normalize_timestamp(reference_price_date)
+    if ref is None:
+        return None
     if ref not in price_frame.index:
         return None
     window = price_frame.loc[price_frame.index >= ref].head(max(int(horizon_days), 1) + 1).copy()
@@ -1021,7 +1040,9 @@ def run_sector_spillover_monitor(
         sector_symbols = sector_price_symbols.get(sector, ())
         if not sector_symbols:
             continue
-        reference_price_date = pd.Timestamp(getattr(row, "reference_price_date")).normalize()
+        reference_price_date = _normalize_timestamp(getattr(row, "reference_price_date"))
+        if reference_price_date is None:
+            continue
         peer_sums = [0.0] * max_day
         peer_counts = [0] * max_day
         for peer in sector_symbols:
