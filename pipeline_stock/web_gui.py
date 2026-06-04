@@ -2650,6 +2650,10 @@ def _run_walk_forward_validation_once(form: dict[str, str]) -> _WalkForwardConte
         )
 
     candidate_indices = list(range(min_train_rows, len(dataset), step_size))
+    latest_candidate_idx = len(dataset) - 1
+    if latest_candidate_idx >= min_train_rows:
+        candidate_indices.append(latest_candidate_idx)
+        candidate_indices = sorted(set(candidate_indices))
     if not candidate_indices:
         raise ValueError("No walk-forward split could be created with the current settings.")
     if len(candidate_indices) > max_splits:
