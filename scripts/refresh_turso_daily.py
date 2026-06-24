@@ -108,6 +108,17 @@ def _is_postgres_conn(conn) -> bool:
     return bool(getattr(conn, "_keumj_remote_postgres", False))
 
 
+def _postgres_relation_exists(conn, name: str) -> bool:
+    row = conn.execute("SELECT to_regclass(?)", (name,)).fetchone()
+    return bool(row and row[0])
+
+
+def _ensure_postgres_index(conn, index_name: str, create_sql: str) -> None:
+    if _postgres_relation_exists(conn, index_name):
+        return
+    conn.execute(create_sql)
+
+
 def _ensure_remote_prices_schema(conn) -> None:
     if _is_postgres_conn(conn):
         conn.execute(
@@ -195,19 +206,31 @@ def _ensure_remote_prices_schema(conn) -> None:
             )
             """
         )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_prices_symbol_date ON prices(symbol, date)")
+        _ensure_postgres_index(conn, "idx_prices_symbol_date", "CREATE INDEX IF NOT EXISTS idx_prices_symbol_date ON prices(symbol, date)")
         _ensure_postgres_unique_index(conn, "prices", ("symbol", "date"), "ux_prices_symbol_date")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_prices_date ON prices(date)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fundamentals_snapshot_as_of_date ON fundamentals_snapshot(as_of_date)")
+        _ensure_postgres_index(conn, "idx_prices_date", "CREATE INDEX IF NOT EXISTS idx_prices_date ON prices(date)")
+        _ensure_postgres_index(
+            conn,
+            "idx_fundamentals_snapshot_as_of_date",
+            "CREATE INDEX IF NOT EXISTS idx_fundamentals_snapshot_as_of_date ON fundamentals_snapshot(as_of_date)",
+        )
         _ensure_postgres_unique_index(conn, "fundamentals_snapshot", ("symbol",), "ux_fundamentals_snapshot_symbol")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fundamentals_quarterly_symbol_fiscal_date ON fundamentals_quarterly(symbol, fiscal_date)")
+        _ensure_postgres_index(
+            conn,
+            "idx_fundamentals_quarterly_symbol_fiscal_date",
+            "CREATE INDEX IF NOT EXISTS idx_fundamentals_quarterly_symbol_fiscal_date ON fundamentals_quarterly(symbol, fiscal_date)",
+        )
         _ensure_postgres_unique_index(
             conn,
             "fundamentals_quarterly",
             ("symbol", "fiscal_date"),
             "ux_fundamentals_quarterly_symbol_fiscal_date",
         )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fundamentals_quarterly_fiscal_date ON fundamentals_quarterly(fiscal_date)")
+        _ensure_postgres_index(
+            conn,
+            "idx_fundamentals_quarterly_fiscal_date",
+            "CREATE INDEX IF NOT EXISTS idx_fundamentals_quarterly_fiscal_date ON fundamentals_quarterly(fiscal_date)",
+        )
         _ensure_postgres_news_context_views(conn)
         conn.commit()
         return
@@ -387,7 +410,7 @@ def _ensure_remote_macro_schema(conn) -> None:
             )
             """
         )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_macro_series_date ON macro_series(date)")
+        _ensure_postgres_index(conn, "idx_macro_series_date", "CREATE INDEX IF NOT EXISTS idx_macro_series_date ON macro_series(date)")
         _ensure_postgres_unique_index(conn, "macro_series", ("series_id", "date"), "ux_macro_series_series_id_date")
         conn.execute(
             """
@@ -476,6 +499,22 @@ def _ensure_remote_macro_schema(conn) -> None:
 def _ensure_postgres_news_article_ids(conn) -> None:
     if not _is_postgres_conn(conn):
         return
+    default_row = conn.execute(
+        """
+        SELECT column_default
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'news_articles'
+          AND column_name = 'id'
+        """
+    ).fetchone()
+    default_value = str(default_row[0] or "") if default_row else ""
+    if (
+        _postgres_relation_exists(conn, "news_articles_id_seq")
+        and _postgres_relation_exists(conn, "ux_news_articles_id")
+        and "news_articles_id_seq" in default_value
+    ):
+        return
     conn.execute("CREATE SEQUENCE IF NOT EXISTS news_articles_id_seq")
     conn.execute(
         """
@@ -503,6 +542,8 @@ def _ensure_postgres_news_article_ids(conn) -> None:
 
 def _ensure_postgres_unique_index(conn, table: str, columns: tuple[str, ...], index_name: str) -> None:
     if not _is_postgres_conn(conn):
+        return
+    if _postgres_relation_exists(conn, index_name):
         return
     quoted_columns = ", ".join(columns)
     equality_sql = " AND ".join(f"older.{col} = newer.{col}" for col in columns)

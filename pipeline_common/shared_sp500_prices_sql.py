@@ -404,11 +404,37 @@ def explain_shared_prices_auth_error(exc: Exception) -> RuntimeError:
     return err
 
 
+def _postgres_relation_exists(conn, name: str) -> bool:
+    row = conn.execute("SELECT to_regclass(?)", (name,)).fetchone()
+    return bool(row and row[0])
+
+
+def _ensure_postgres_index(conn, index_name: str, create_sql: str) -> None:
+    if _postgres_relation_exists(conn, index_name):
+        return
+    conn.execute(create_sql)
+
+
 def _ensure_postgres_news_context_views(conn) -> None:
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_prices_symbol_date ON prices(symbol, date)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_news_articles_ticker_publish_date ON news_articles(ticker, publish_date)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_news_articles_publish_date ON news_articles(publish_date)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_news_articles_analysis_status_publish_date ON news_articles(analysis_status, publish_date)")
+    _ensure_postgres_index(conn, "idx_prices_symbol_date", "CREATE INDEX IF NOT EXISTS idx_prices_symbol_date ON prices(symbol, date)")
+    _ensure_postgres_index(
+        conn,
+        "idx_news_articles_ticker_publish_date",
+        "CREATE INDEX IF NOT EXISTS idx_news_articles_ticker_publish_date ON news_articles(ticker, publish_date)",
+    )
+    _ensure_postgres_index(
+        conn,
+        "idx_news_articles_publish_date",
+        "CREATE INDEX IF NOT EXISTS idx_news_articles_publish_date ON news_articles(publish_date)",
+    )
+    _ensure_postgres_index(
+        conn,
+        "idx_news_articles_analysis_status_publish_date",
+        "CREATE INDEX IF NOT EXISTS idx_news_articles_analysis_status_publish_date ON news_articles(analysis_status, publish_date)",
+    )
+    if _postgres_relation_exists(conn, "news_articles_price_context") and _postgres_relation_exists(conn, "news_articles_market_context"):
+        conn.commit()
+        return
     conn.execute(
         """
         CREATE OR REPLACE VIEW news_articles_price_context AS
