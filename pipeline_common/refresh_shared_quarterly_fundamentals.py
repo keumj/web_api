@@ -318,6 +318,21 @@ def _has_recent_quarterly_data(
     return age_days >= 0 and age_days <= max(int(refresh_after_days), 1)
 
 
+def _quarterly_refresh_should_fail(
+    *,
+    total_symbols: int,
+    success_count: int,
+    skipped_count: int,
+    no_data_count: int,
+    failure_count: int,
+) -> bool:
+    if failure_count > 0:
+        return True
+    if success_count > 0 or skipped_count > 0:
+        return False
+    return total_symbols > 0 and no_data_count > 0
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Backfill the latest quarterly fundamentals into the shared S&P 500 SQLite DB.")
     parser.add_argument("--db-path", default="", help="Optional shared SQLite path override")
@@ -416,7 +431,13 @@ def main() -> int:
             "Completed quarterly fundamentals refresh "
             f"(symbols={total_symbols}, succeeded={success_count}, skipped={skipped_count}, no_data={no_data_count}, failed={failure_count}, rows_changed={stored_rows})"
         )
-        if success_count == 0 and skipped_count < total_symbols and (failure_count > 0 or no_data_count > 0):
+        if _quarterly_refresh_should_fail(
+            total_symbols=total_symbols,
+            success_count=success_count,
+            skipped_count=skipped_count,
+            no_data_count=no_data_count,
+            failure_count=failure_count,
+        ):
             hint = security_hint(RuntimeError("yfinance download failed"), output_dir=db_path.parent)
             if hint:
                 print(hint, file=sys.stderr)
