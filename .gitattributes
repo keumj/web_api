@@ -1,1 +1,5 @@
 # Git LFS is intentionally not used for this repository.
+
+# Windows cmd.exe label lookup requires consistent Windows line endings.
+*.cmd text eol=crlf
+*.bat text eol=crlf
