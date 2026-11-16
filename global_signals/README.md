@@ -1,10 +1,43 @@
 # Global asset signals
 
-Initial connected universe: SPY (US large-cap equities), IEF (US 7–10 year
-Treasuries), GLD (gold trust), VNQ (US listed real estate). These are explicit
-proxies, not complete coverage of their asset classes. 449170.KS (TIGER KOFR
-active synthetic ETF) supplies a KRW cash-like comparator; it is not a deposit.
-KRW=X supplies KRW per USD. All six series are checked for their quote currency.
+All **114 catalogue exposures** have explicit collection bindings and individual
+analysis pages. **79 provider series** are shared across them. The 39 fund/crypto
+proxies and 10 spot-FX exposures support research forecasts; the other 65 expose
+descriptive reference-data analysis without inventing product total returns.
+
+| Asset class | Count | Price/FX forecasts | Reference-data analyses |
+| --- | ---: | ---: | ---: |
+| Country equities | 16 | 16 | 0 |
+| Government bonds | 21 | 3 | 18 |
+| Corporate bonds | 10 | 5 | 5 |
+| Listed real estate | 9 | 7 | 2 |
+| Physical property | 9 | 0 | 9 |
+| Commodities | 6 | 6 | 0 |
+| Spot FX | 10 | 10 | 0 |
+| Cryptoassets | 2 | 2 | 0 |
+| KRW cash comparator | 1 | 0 | 1 |
+| Foreign-currency cash products | 30 | 0 | 30 |
+
+`universe.py` defines each source, quote currency, series frequency, freshness
+limit and coverage caveat. Yahoo supplies fund adjusted prices, FX and crypto spot
+prices; FRED supplies OECD rates and BIS residential indices; BIS directly supplies
+Swiss and Hong Kong policy rates. A missing or stale source remains visible.
+449170.KS (TIGER KOFR active synthetic ETF) is the KRW cash-like comparator,
+not an insured deposit. It is not scored against itself.
+
+USD-quoted country ETFs are converted once; JPY and other foreign-per-USD cross
+legs are divided, EUR/GBP/AUD USD-per-foreign legs are multiplied. KRW instruments
+are not converted again. LSE GBp prices are normalized to GBP. FX exposures include
+no interest/carry; crypto prices include no staking or Korean exchange premium.
+
+Non-US government maturity buckets currently have money-market/10-year yield
+context, not matching total-return products. GBP HY, KRW and JPY corporate buckets
+have rate/FX context, not credit-spread data. DE/FR listed REIT candidates show
+residential context, not REIT returns. Physical property includes residential
+prices only, excluding rent and commercial property. Foreign deposits, bills and
+MMFs require actual bank/security/fund terms before a product-return forecast;
+SGD candidates currently have FX context only. These limitations are displayed
+on the corresponding pages and their signals remain gray.
 
 ## PostgreSQL and recovery
 
@@ -39,10 +72,19 @@ refresh_global_signals.cmd direct
 Existing `all` refresh commands retain their original prices/fundamentals/news/macro
 scope; choose option 6 or `global-signals` for this new isolated workflow.
 The FastAPI runtime reads PostgreSQL only, never the recovery SQLite file.
+Choose local menu **7** (`open-signals`) to open the dashboard. To retry only a
+failed subset after a collection (without downloading successful series again):
+
+```powershell
+.\.venv\Scripts\python.exe -B -m global_signals.refresh --mode local --retry-missing
+```
+
+Retry preserves the original first-seen time of successful snapshots and their
+freshness checks; ordinary local/direct refresh always downloads every source.
 
 ## Model and validation
 
-`monthly-conditional-v1` is a **research baseline**, not an approved trading model.
+`monthly-conditional-v2` is a **research baseline**, not an approved trading model.
 It estimates a one-calendar-month distribution of KRW returns minus the cash ETF
 return and an explicitly assumed round-trip cost (default 0.2%, tax excluded).
 Adjusted fund prices already embed fund expenses; those expenses are not deducted again.
@@ -74,12 +116,20 @@ overlap, and observed execution costs/taxes are absent. The persisted model stay
 These thresholds are versioned research choices. A research color is not an
 investment recommendation or evidence that the model beats its benchmark.
 Hedged forecasts remain unavailable pending executable hedge quotes, investor
-access and costs. Remaining catalogue assets are visibly unconnected/context-only.
+access and costs. Context analyses report level changes (percentage points for
+rates, percentage changes for prices), year-on-year changes and provenance.
+Monthly/quarterly freshness is measured from period-end, not period-start.
+Reference status "ready" means the reference inputs are available, not that a
+matching investable product or trading forecast has been validated.
 
 ## UI, scheduling and operations
 
-Open `/global-signals` in the existing FastAPI service; `/api/global-signals`
-returns the same PostgreSQL data. Existing authentication applies to both routes.
+Open `/global-signals` for searchable/filterable cards for all 114 assets.
+`/global-signals/{exposure_id}` shows interactive history charts, KRW comparison,
+return/risk or reference-rate statistics, validation, source freshness and signal
+history. `/api/global-signals` and `/api/global-signals/{exposure_id}` return the
+same PostgreSQL data. Existing authentication applies to all routes, including
+the locally served Plotly JavaScript (no external chart CDN).
 Database failures return 503 without exposing a connection string. The page shows
 sample sizes, Brier scores, dates and cost assumptions, with timestamps in KST.
 Restart the existing service after deploying these source changes.
@@ -101,7 +151,7 @@ do not aim this dedicated-database initializer at shared application tables.
 
 ```powershell
 $env:GLOBAL_SIGNALS_TEST_DB='1'
-.\.venv\Scripts\python.exe -B -m unittest global_signals.tests.test_signals -v
+.\.venv\Scripts\python.exe -B -m unittest discover -s global_signals/tests -v
 ```
 
 Integration tests use the configured owned DB and roll back their changes.
@@ -115,3 +165,10 @@ Source/method references:
 - https://www.ishares.com/us/literature/fact-sheet/ief-ishares-7-10-year-treasury-bond-etf-fund-fact-sheet-en-us.pdf
 - https://www.ssga.com/us/en/individual/etfs/spdr-gold-shares-gld
 - https://advisors.vanguard.com/investments/products/vnq/vanguard-real-estate-etf
+- https://www.ishares.com/us/products/etf-investments
+- https://www.ishares.com/uk/individual/en/products/251843/ishares-euro-high-yield-corporate-bond-ucits-etf
+- https://www.jpx.co.jp/english/equities/products/etfs/issues/01.html
+- https://www.vanguard.com.au/personal/invest-with-us/etf?portId=8206&tab=fund
+- https://www.lionglobalinvestors.com/en/fund-lion-phillip-s-reit-etf.html
+- https://data.bis.org/topics/CBPOL
+- https://data.bis.org/topics/RPP

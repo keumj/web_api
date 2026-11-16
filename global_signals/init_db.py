@@ -14,7 +14,7 @@ from .catalog import SOURCES, EXPOSURES
 from .db import connect, connection_info, database_name
 
 PROJECT_KEY = 'global_asset_signals_v1'
-SCHEMA_VERSION = '3'
+SCHEMA_VERSION = '4'
 
 
 def initialize(database=None):

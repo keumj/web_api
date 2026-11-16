@@ -13,9 +13,9 @@ import pandas as pd
 
 from .data import price_series
 from .returns import next_calendar_month
-from .universe import CASH_TICKER, FX_TICKER
+from .universe import CASH_TICKER, FX_TICKER, FX_LEGS, BINDINGS, SERIES, fx_dependencies
 
-VERSION = 'monthly-conditional-v1'
+VERSION = 'monthly-conditional-v2'
 MIN_TRAIN = 24
 MIN_REGIME = 8
 MIN_EVALUATIONS = 12
@@ -48,21 +48,58 @@ def color_for(prediction):
     return 'yellow'
 
 
-def evaluate(snapshots, ticker, *, cost_fraction=0.002, now=None):
+def krw_fx(snapshots, currency):
+    """KRW per one quote-currency unit, using explicitly oriented cross legs."""
+    ticker, side = FX_LEGS[currency]
+    if side == 'identity':
+        return None
+    usd = price_series(snapshots[FX_TICKER])
+    if side == 'direct':
+        return usd
+    leg = price_series(snapshots[ticker])
+    return (usd * leg if side == 'usd_per_foreign' else usd / leg).dropna()
+
+
+def krw_asset(snapshots, binding):
+    fx = krw_fx(snapshots, binding['quote_currency'])
+    if binding['mode'] == 'fx':
+        return fx
+    asset = price_series(snapshots[binding['primary']])
+    return asset if fx is None else (asset * fx).dropna()
+
+
+def trailing_metrics(series):
+    result = {'latest_krw_level': float(series.iloc[-1]),
+              'max_drawdown': float((series / series.cummax() - 1).min())}
+    for label, months in [('return_1m', 1), ('return_3m', 3), ('return_1y', 12)]:
+        prior = series[series.index <= series.index[-1] - pd.DateOffset(months=months)]
+        if not prior.empty:
+            result[label] = float(series.iloc[-1] / prior.iloc[-1] - 1)
+    changes = series.pct_change().dropna()
+    if len(changes) > 1:
+        result['annualized_volatility'] = float(changes.tail(252).std() * np.sqrt(252))
+    return result
+
+
+def evaluate(snapshots, ticker, *, cost_fraction=0.002, now=None, exposure=None):
     now = now or datetime.now(timezone.utc)
     if not math.isfinite(cost_fraction) or not 0 <= cost_fraction < 1:
         raise ValueError('Round-trip assumed cost must be a finite fraction in [0,1)')
-    required = (ticker, FX_TICKER, CASH_TICKER)
+    binding = BINDINGS[exposure] if exposure else dict(mode='forecast', primary=ticker,
+        quote_currency=SERIES[ticker]['currency'],
+        series=list(dict.fromkeys([ticker, *fx_dependencies(SERIES[ticker]['currency']), CASH_TICKER])))
+    required = binding['series']
     if any(s not in snapshots for s in required):
         return empty_result('failed', 'required_series_missing')
     if any(pd.Timestamp(snapshots[s].first_seen) > pd.Timestamp(now) for s in required):
         return empty_result('failed', 'snapshot_after_cutoff')
-    prices = pd.concat({s: price_series(snapshots[s]) for s in required}, axis=1, join='inner').sort_index().dropna()
+    prices = pd.concat({'asset': krw_asset(snapshots, binding),
+                        'cash': price_series(snapshots[CASH_TICKER])}, axis=1, join='inner').sort_index().dropna()
     prices = prices[prices.index < pd.Timestamp(now.date())]
     if len(prices) < 160:
         return empty_result('insufficient', 'short_history')
-    krw = prices[ticker] * prices[FX_TICKER]
-    cash = prices[CASH_TICKER]
+    krw = prices['asset']
+    cash = prices['cash']
     momentum = krw / krw.shift(63) - 1
     regime = ((momentum > 0) & (krw > krw.rolling(126).mean())).astype(int)
     # Use actual common trading dates, first tradable observation AFTER decision.
@@ -111,6 +148,8 @@ def evaluate(snapshots, ticker, *, cost_fraction=0.002, now=None):
         validation.update(brier_score=brier, baseline_brier_score=baseline,
                           diagnostic_gate_passed=len(a) >= MIN_EVALUATIONS and brier < baseline)
     metrics = {**(prediction or {}), 'ticker': ticker, 'cash_benchmark': CASH_TICKER,
+               'analysis_mode': binding['mode'], 'quote_currency': binding['quote_currency'],
+               **trailing_metrics(krw),
                'currency_treatment': 'unhedged', 'reporting_currency': 'KRW',
                'assumed_round_trip_cost_fraction': cost_fraction,
                'momentum_3m': float(momentum.iloc[-1]),
