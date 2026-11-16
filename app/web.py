@@ -18,6 +18,7 @@ def _service_nav(active: str = "", *, admin: bool = False) -> str:
         "stock": "active" if active == "stock" else "",
         "news": "active" if active == "news" else "",
         "macro": "active" if active == "macro" else "",
+        "global-signals": "active" if active == "global-signals" else "",
         "admin": "active" if active == "admin" else "",
     }
     admin_link = f'<a class="{active_class["admin"]}" href="/admin/users">사용자 관리</a>' if admin else ""
@@ -28,6 +29,7 @@ def _service_nav(active: str = "", *, admin: bool = False) -> str:
         <a class="{active_class["stock"]}" href="/stock/financials">종목 분석</a>
         <a class="{active_class["news"]}" href="/stock-news/overview">뉴스 분석</a>
         {macro_link}
+        <a class="{active_class["global-signals"]}" href="/global-signals">자산 신호등</a>
         {admin_link}
         {api_link}
     """

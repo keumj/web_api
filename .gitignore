@@ -35,6 +35,7 @@ data/portfolio/**
 data/turso_replicas/
 data/sp500_shared_db/sp500_shared_prices.sqlite
 data/macro_prices.sqlite
+data/global_signals.sqlite
 data/**/*.sqlite-shm
 data/**/*.sqlite-wal
 data/**/*.db-shm

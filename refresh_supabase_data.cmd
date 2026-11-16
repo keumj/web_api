@@ -32,6 +32,7 @@ echo  [2] Fundamentals
 echo  [3] News
 echo  [4] Macro
 echo  [5] Run all
+echo  [6] Global asset signals to its dedicated PostgreSQL DB
 echo  [0] Exit
 echo.
 
@@ -47,6 +48,7 @@ if "%CHOICE%"=="2" goto :fundamentals
 if "%CHOICE%"=="3" goto :news
 if "%CHOICE%"=="4" goto :macro
 if "%CHOICE%"=="5" goto :all
+if "%CHOICE%"=="6" goto :global_signals
 if /i "%CHOICE%"=="prices" goto :prices
 if /i "%CHOICE%"=="stock" goto :prices
 if /i "%CHOICE%"=="fundamentals" goto :fundamentals
@@ -54,6 +56,7 @@ if /i "%CHOICE%"=="quarterly" goto :fundamentals
 if /i "%CHOICE%"=="news" goto :news
 if /i "%CHOICE%"=="macro" goto :macro
 if /i "%CHOICE%"=="all" goto :all
+if /i "%CHOICE%"=="global-signals" goto :global_signals
 
 echo Invalid option.
 if "%INTERACTIVE%"=="1" goto :menu
@@ -87,6 +90,11 @@ echo ------------------------------------------------------------
 "%PYTHON_EXE%" -u scripts\refresh_supabase_daily.py --mode upload-local --target %~1
 set "EXIT_CODE=%ERRORLEVEL%"
 exit /b %EXIT_CODE%
+
+:global_signals
+"%PYTHON_EXE%" -B -m global_signals.refresh --mode upload-local
+set "EXIT_CODE=%ERRORLEVEL%"
+goto :status
 
 :status
 echo.

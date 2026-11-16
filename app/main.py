@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from starlette.middleware.gzip import GZipMiddleware
 
-from app.routers import admin, auth, macro, pages, portfolio, refresh, stock, stock_news
+from app.routers import admin, auth, global_signals, macro, pages, portfolio, refresh, stock, stock_news
 from app.security import AuthMiddleware, LanAccessMiddleware
 from app.settings import settings
 
@@ -28,6 +28,7 @@ app.add_middleware(LanAccessMiddleware)
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(pages.router)
+app.include_router(global_signals.router)
 app.include_router(portfolio.router)
 app.include_router(refresh.router)
 app.include_router(stock.router)

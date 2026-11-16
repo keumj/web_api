@@ -1,0 +1,28 @@
+name: Refresh global asset signals
+
+on:
+  schedule:
+    - cron: "15 23 * * 1-5" # 08:15 KST Tue-Sat, after US market close
+  workflow_dispatch:
+
+concurrency:
+  group: refresh-global-signals
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    if: vars.GLOBAL_SIGNALS_REFRESH_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Refresh directly to PostgreSQL
+        env:
+          KEUMJ_GLOBAL_SIGNALS_DATABASE_URL: ${{ secrets.KEUMJ_GLOBAL_SIGNALS_DATABASE_URL }}
+        run: python -m global_signals.refresh --mode direct
